@@ -1,0 +1,1825 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrintGrid</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 15px;
+        }
+        
+        .card {
+            border-radius: 10px;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 25px;
+        }
+        
+        .card-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #eee;
+            padding: 15px 20px;
+            font-weight: 600;
+        }
+        
+        .card-body {
+            padding: 25px;
+        }
+        
+
+            .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            padding: 0;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+            }
+
+        .loading-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            z-index: 2000;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        
+        .loading-indicator.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        .tooltip-helper {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(33, 37, 41, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1050;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .tooltip-helper.show {
+            opacity: 1;
+        }
+        
+        .sticker-preview {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            padding: 10px;
+            display: inline-block;
+        }
+        
+        .step-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            background-color: #e9ecef;
+            border-radius: 50%;
+            margin-right: 15px;
+            color: #495057;
+            font-weight: bold;
+        }
+        
+        .recent-layout-item {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .recent-layout-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Interactive preview styles */
+        .paper-visual {
+            position: relative;
+            background-color: white;
+            border: 1px solid #dee2e6;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin: 0 auto;
+            transition: all 0.3s ease;
+            width: 100%;
+            height: 400px;
+            max-width: 100%;
+            overflow: hidden;
+        }
+        
+        .printable-area {
+            position: absolute;
+            border: 1px dashed #0d6efd;
+            background-color: rgba(13, 110, 253, 0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .sticker-preview-item {
+            position: absolute;
+            background-color: rgba(13, 110, 253, 0.2);
+            border: 1px solid rgba(13, 110, 253, 0.5);
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+        
+        .dimension-controls .form-range {
+            height: 1.5rem;
+        }
+        
+        .dimension-controls .form-range::-webkit-slider-thumb {
+            background: #0d6efd;
+        }
+        
+        #preview-stats {
+            font-size: 0.875rem;
+        }
+        
+        .slider-value {
+            min-width: 40px;
+            text-align: right;
+        }
+        
+        .layout-info {
+            border-left: 3px solid #0d6efd;
+            padding-left: 15px;
+        }
+    </style>
+</head>
+<body>
+
+
+
+<!-- Validation error display area at the top of the form -->
+<div id="validation-errors" class="mb-4 {% if not messages %}d-none{% endif %}">
+    <div class="alert alert-danger">
+        <h6 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>Please check the following issues:</h6>
+        <ul class="mb-0 list-unstyled">
+            {% for message in messages %}
+                <li><i class="fas fa-circle me-2" style="font-size: 6px; vertical-align: middle;"></i> {{ message }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+
+
+    <header class="bg-white shadow-sm">
+        <div class="container py-3">
+            <div class="d-flex align-items-center justify-content-between">
+                <h1 class="h4 mb-0">
+                    <i class="fas fa-tag me-2 text-primary"></i> 
+                    PrintGrid
+                </h1>
+                <a href="#" class="btn btn-outline-primary d-none d-md-inline-block" id="help-btn">
+                    <i class="fas fa-question-circle me-1"></i> Help
+                </a>
+            </div>
+        </div>
+    </header>
+    
+    <div class="main-container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Create Sticker Layout</span>
+                    </div>
+                    <div class="card-body">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<form method="post" action="{% url 'calculate_layout' %}" enctype="multipart/form-data" id="layout-form">
+    {% csrf_token %}
+
+    <!-- Step 1: Upload Image -->
+    <div class="mb-4">
+        <div class="d-flex align-items-center mb-3">
+            <div class="step-icon">1</div>
+            <h5 class="mb-0">Upload Your Sticker orccc Flyer</h5>
+        </div>
+        
+        <div class="mb-3">
+            <label for="sticker_image" class="form-label">
+                Image <span class="text-danger">*</span>
+            </label>
+            <input type="file" class="form-control" id="sticker_image" name="sticker_image" accept="image/*" required>
+            <div class="form-text">
+                <i class="fas fa-info-circle me-1"></i> 
+                Supported formats: PNG, JPG, GIF, SVG
+            </div>
+        </div>
+        
+        <div id="sticker_preview" class="text-center mb-3 d-none">
+            <p><small class="text-muted">Preview:</small></p>
+            <div class="sticker-preview">
+                <img id="preview_image" class="img-fluid rounded" style="max-height: 150px;">
+            </div>
+        </div>
+        
+        <!-- Auto-detected dimensions -->
+        <div id="auto_dimensions" class="d-none">
+            <div class="alert alert-info mb-3">
+                <div class="mb-2">
+                    <i class="fas fa-ruler-combined me-2"></i>
+                    <strong>Detected Dimensions:</strong>
+                </div>
+                <div class="row">
+                    <div class="col-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_mm" value="mm" checked>
+                            <label class="form-check-label" for="unit_mm">
+                                <span id="dim_mm">0 × 0</span> mm
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_inches" value="inches">
+                            <label class="form-check-label" for="unit_inches">
+                                <span id="dim_inches">0 × 0</span> inches
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_pixels" value="pixels">
+                            <label class="form-check-label" for="unit_pixels">
+                                <span id="dim_pixels">0 × 0</span> px
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2 small text-muted">
+                    Detected at <span id="dim_dpi">72 × 72</span> DPI. 
+                    <button type="button" class="btn btn-link btn-sm p-0" id="use_detected_size">
+                        <i class="fas fa-magic me-1"></i> Use these dimensions
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Hidden form fields for the original form submission -->
+        <div class="row visually-hidden">
+            <div class="col">
+                <div class="mb-3">
+                    <label for="sticker_width" class="form-label">Width (mm)</label>
+                    <input type="number" class="form-control" id="sticker_width" name="sticker_width" min="5" max="1000" value="{{ form_data.sticker_width|default:'50' }}">
+                </div>
+            </div>
+            <div class="col">
+                <div class="mb-3">
+                    <label for="sticker_height" class="form-label">Height (mm)</label>
+                    <input type="number" class="form-control" id="sticker_height" name="sticker_height" min="5" max="1000" value="{{ form_data.sticker_height|default:'50' }}">
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Step 2: Paper Settings -->
+    <div class="mb-4">
+        <div class="d-flex align-items-center mb-3">
+            <div class="step-icon">2</div>
+            <h5 class="mb-0">Canvas Settings</h5>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-7">
+                <div id="standard_paper_options">
+                    <div class="mb-3">
+                        <label for="paper_size" class="form-label">
+                            Canvas Size <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="paper_size" name="paper_size" required>
+                            {% for size in paper_sizes %}
+                                <option value="{{ size.id }}" data-width="{{ size.width_mm }}" data-height="{{ size.height_mm }}" {% if form_data.paper_size == size.id %}selected{% endif %}>
+                                    {{ size.name }} ({{ size.width_mm }}mm × {{ size.height_mm }}mm)
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="custom_paper_options" class="d-none">
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label for="custom_paper_width" class="form-label">
+                                    Width (mm)
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="custom_paper_width" name="custom_paper_width" value="{{ form_data.custom_paper_width|default:'210' }}" min="50" max="2000" step="0.1">
+                                    <span class="input-group-text">mm</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label for="custom_paper_height" class="form-label">
+                                    Height (mm)
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="custom_paper_height" name="custom_paper_height" value="{{ form_data.custom_paper_height|default:'297' }}" min="50" max="2000" step="0.1">
+                                    <span class="input-group-text">mm</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="paper_orientation" class="form-label">
+                                Orientation
+                            </label>
+                            <select class="form-select" id="paper_orientation" name="paper_orientation">
+                                <option value="portrait" {% if form_data.paper_orientation == 'portrait' %}selected{% endif %}>Portrait</option>
+                                <option value="landscape" {% if form_data.paper_orientation == 'landscape' %}selected{% endif %}>Landscape</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check mb-3 mt-4">
+                            <input class="form-check-input" type="checkbox" id="use_custom_paper" name="use_custom_paper" value="true" {% if form_data.use_custom_paper == 'true' %}checked{% endif %}>
+                            <label class="form-check-label" for="use_custom_paper">
+                                Use custom paper size
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Step 3: Interactive Preview with Margins & Spacing -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-eye me-2"></i> Interactive Preview</span>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="maintain-ratio" checked>
+                <label class="form-check-label" for="maintain-ratio">Maintain Aspect Ratio</label>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-7">
+                    <!-- Combined visualization -->
+                    <div id="combined-preview" class="position-relative mb-3">
+                        <div class="paper-visual">
+                            <div class="printable-area"></div>
+                            <div id="stickers-container"></div>
+                        </div>
+                        <div class="small text-muted mt-2 text-center">
+                            <span id="preview-stats"></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Layout information -->
+                    <div class="layout-info p-3 bg-light rounded mt-3">
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="mb-2">
+                                    <strong><i class="fas fa-border-all me-2"></i> Grid Layout:</strong>
+                                    <span id="grid-layout">0 × 0</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="mb-2">
+                                    <strong><i class="fas fa-copy me-2"></i> Items per page:</strong>
+                                    <span id="items-per-page">0</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Validation message area within the preview -->
+                        <div id="preview-validation-message" class="alert d-none mt-2"></div>
+                    </div>
+                </div>
+                <div class="col-md-5">
+                    <!-- Dimension controls with sliders -->
+                    <div class="dimension-controls">
+                        <h6 class="mb-3">Item Dimensions</h6>
+                        
+                        <!-- Sticker Width -->
+                        <div class="mb-3">
+                            <label for="sticker-width-slider" class="form-label d-flex justify-content-between">
+                                <span>Width</span>
+                                <div>
+                                    <span id="width-value" class="slider-value">{{ form_data.sticker_width|default:'50' }}</span> mm
+                                </div>
+                            </label>
+                            <input type="range" class="form-range" id="sticker-width-slider" min="10" max="1000" step="1" value="{{ form_data.sticker_width|default:'50' }}">
+                        </div>
+                        
+                        <!-- Sticker Height -->
+                        <div class="mb-3">
+                            <label for="sticker-height-slider" class="form-label d-flex justify-content-between">
+                                <span>Height</span>
+                                <div>
+                                    <span id="height-value" class="slider-value">{{ form_data.sticker_height|default:'50' }}</span> mm
+                                </div>
+                            </label>
+                            <input type="range" class="form-range" id="sticker-height-slider" min="10" max="1000" step="1" value="{{ form_data.sticker_height|default:'50' }}">
+                        </div>
+                        
+                        <!-- Margins -->
+                        <h6 class="mb-2 mt-4">Margins & Spacing</h6>
+                        <div class="mb-3">
+                            <label for="margin-slider" class="form-label d-flex justify-content-between">
+                                <span>All Margins</span>
+                                <div>
+                                    <span id="margin-value" class="slider-value">{{ form_data.margin_top|default:'10' }}</span> mm
+                                </div>
+                            </label>
+                            <input type="range" class="form-range" id="margin-slider" min="0" max="100" value="{{ form_data.margin_top|default:'10' }}" step="1">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="spacing-slider" class="form-label d-flex justify-content-between">
+                                <span>Item Spacing</span>
+                                <div>
+                                    <span id="spacing-value" class="slider-value">{{ form_data.horizontal_spacing|default:'2' }}</span> mm
+                                </div>
+                            </label>
+                            <input type="range" class="form-range" id="spacing-slider" min="0" max="50" value="{{ form_data.horizontal_spacing|default:'2' }}" step="0.5">
+                        </div>
+                        
+                        <!-- Individual margins (hidden but updated) -->
+                        <div class="d-none">
+                            <input type="number" id="margin_top" name="margin_top" value="{{ form_data.margin_top|default:'10' }}">
+                            <input type="number" id="margin_right" name="margin_right" value="{{ form_data.margin_right|default:'10' }}">
+                            <input type="number" id="margin_bottom" name="margin_bottom" value="{{ form_data.margin_bottom|default:'10' }}">
+                            <input type="number" id="margin_left" name="margin_left" value="{{ form_data.margin_left|default:'10' }}">
+                            <input type="number" id="horizontal_spacing" name="horizontal_spacing" value="{{ form_data.horizontal_spacing|default:'2' }}">
+                            <input type="number" id="vertical_spacing" name="vertical_spacing" value="{{ form_data.vertical_spacing|default:'2' }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Layout name -->
+    <div class="mb-4">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="layout_name" class="form-label">Layout Name</label>
+                    <input type="text" class="form-control" id="layout_name" name="layout_name" value="{{ form_data.layout_name|default:'New Layout' }}">
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="d-grid gap-2">
+        <button type="submit" class="btn btn-primary btn-lg" id="calculate-btn">
+            <i class="fas fa-calculator me-2"></i> Calculate & Generate Layout
+        </button>
+    </div>
+</form>
+
+
+
+
+
+
+
+
+                    </div>
+                </div>
+                
+                {% if recent_layouts %}
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-history me-2"></i> Recent Layouts
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            {% for layout in recent_layouts %}
+                            <div class="col-md-4">
+                                <div class="card recent-layout-item h-100">
+                                    <div class="card-body p-3">
+                                        <h6 class="card-title text-truncate">{{ layout.name }}</h6>
+                                        <p class="card-text small text-muted mb-2">
+                                            {{ layout.paper_size.name }}, {{ layout.layout_data.total_stickers }} stickers
+                                        </p>
+                                        <p class="card-text small text-muted mb-0">
+                                            {{ layout.created_at|date:"M d, Y" }}
+                                        </p>
+                                    </div>
+                                    <div class="card-footer bg-transparent p-3 pt-0 border-0">
+                                        <a href="{% url 'edit_layout' layout_id=layout.id %}" class="btn btn-sm btn-outline-primary w-100">
+                                            <i class="fas fa-edit me-1"></i> Edit
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Help Modal -->
+    <div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="helpModalLabel">
+                        <i class="fas fa-question-circle me-2 text-primary"></i>
+                        How to Use the Sticker Layout Generator
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <h6 class="mb-3">About This Tool</h6>
+                    <p>
+                        The Sticker Layout Generator helps you create printable layouts for your stickers or flyers. 
+                        It automatically calculates how many items can fit on a page and arranges them optimally.
+                    </p>
+                    
+                    <hr>
+                    
+                    <h6 class="mb-3">Step 1: Upload Your Image</h6>
+                    <p>
+                        <strong>Upload a sticker image:</strong> This should be a single design that you want to arrange on a page.
+                    </p>
+                    <p>
+                        <strong>Specify dimensions:</strong> Enter the physical dimensions of your sticker in millimeters. 
+                        The system can also detect dimensions automatically from your image.
+                    </p>
+                    
+                    <hr>
+                    
+                    <h6 class="mb-3">Step 2: Canvas Settings</h6>
+                    <p>
+                        <strong>Canvas size:</strong> Select from standard paper sizes or create a custom size.
+                    </p>
+                    <p>
+                        <strong>Orientation:</strong> Choose portrait (taller than wide) or landscape (wider than tall).
+                    </p>
+                    
+                    <hr>
+                    
+                    <h6 class="mb-3">Step 3: Margins and Spacing</h6>
+                    <p>
+                        <strong>Margins:</strong> Set the non-printable area around the edges of your paper (in mm).
+                    </p>
+                    <p>
+                        <strong>Spacing:</strong> Define how much space to leave between items on the page (in mm).
+                    </p>
+                    
+                    <hr>
+                    
+                    <h6 class="mb-3">Step 4: Layout Editor</h6>
+                    <p>
+                        After calculating the layout, you can:
+                    </p>
+                    <ul>
+                        <li>View the arranged items on the page</li>
+                        <li>Adjust positions by dragging items</li>
+                        <li>Add, clone, or remove items</li>
+                        <li>Use undo/redo to track your changes</li>
+                        <li>Download as PDF or PNG for printing</li>
+                    </ul>
+                    
+                    <hr>
+                    
+                    <h6 class="mb-3">Tips</h6>
+                    <ul>
+                        <li>For best results, ensure your image has good resolution</li>
+                        <li>Check your printer's specifications for minimum margin requirements</li>
+                        <li>Use the editor to fine-tune the positioning of items</li>
+                        <li>You can save your layout for future use</li>
+                        <li>Test with a single page before printing in bulk</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Got it!</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tooltip Helper -->
+    <div class="tooltip-helper" id="tooltip-helper"></div>
+    
+    <!-- Loading Indicator -->
+    <div class="loading-indicator" id="global-loading">
+        <div class="spinner-border text-primary mb-3" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <h5 id="loading-message">Loading...</h5>
+    </div>
+    
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+
+
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Handle global loading indicator
+        window.showLoading = function(message = 'Loading...') {
+            const loading = document.getElementById('global-loading');
+            const messageEl = document.getElementById('loading-message');
+            messageEl.textContent = message;
+            loading.classList.add('active');
+        };
+        
+        window.hideLoading = function() {
+            const loading = document.getElementById('global-loading');
+            loading.classList.remove('active');
+        };
+        
+        // Helper tooltip function
+        window.showTooltip = function(message, duration = 2000) {
+            const tooltip = document.getElementById('tooltip-helper');
+            tooltip.textContent = message;
+            tooltip.classList.add('show');
+            
+            setTimeout(function() {
+                tooltip.classList.remove('show');
+            }, duration);
+        };
+        
+        // Preview uploaded image and detect dimensions
+        document.getElementById('sticker_image').addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                // Show loading indicator
+                window.showLoading('Analyzing image...');
+                
+                // Show preview image
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('preview_image').src = e.target.result;
+                    document.getElementById('sticker_preview').classList.remove('d-none');
+                };
+                reader.readAsDataURL(file);
+                
+                // Detect sticker dimensions via AJAX
+                const formData = new FormData();
+                formData.append('sticker_image', file);
+                
+                // Show loading indicator
+                const autoDiv = document.getElementById('auto_dimensions');
+                autoDiv.classList.remove('d-none');
+                autoDiv.innerHTML = '<div class="alert alert-info text-center p-3"><div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div> Detecting image dimensions...</div>';
+                
+                fetch('/detect-sticker-size/', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Hide loading indicator
+                    window.hideLoading();
+                    
+                    if (data.success) {
+                        // Display the auto-detected dimensions
+                        document.getElementById('auto_dimensions').classList.remove('d-none');
+                        document.getElementById('auto_dimensions').innerHTML = `
+                            <div class="alert alert-info mb-3">
+                                <div class="mb-2">
+                                    <i class="fas fa-ruler-combined me-2"></i>
+                                    <strong>Detected Dimensions:</strong>
+                                </div>
+                                <div class="row">
+                                    <div class="col-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_mm" value="mm" checked>
+                                            <label class="form-check-label" for="unit_mm">
+                                                <span id="dim_mm">${data.dimensions.mm.width} × ${data.dimensions.mm.height}</span> mm
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_inches" value="inches">
+                                            <label class="form-check-label" for="unit_inches">
+                                                <span id="dim_inches">${data.dimensions.inches.width} × ${data.dimensions.inches.height}</span> in
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_pixels" value="pixels">
+                                            <label class="form-check-label" for="unit_pixels">
+                                                <span id="dim_pixels">${data.dimensions.pixels.width} × ${data.dimensions.pixels.height}</span> px
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-2 small text-muted">
+                                    Detected at <span id="dim_dpi">${data.dimensions.dpi.x} × ${data.dimensions.dpi.y}</span> DPI. 
+                                    <button type="button" class="btn btn-link btn-sm p-0" id="use_detected_size">
+                                        <i class="fas fa-magic me-1"></i> Use these dimensions
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Store the detected dimensions in variables for later use
+                        window.detectedDimensions = data.dimensions;
+                        
+                        // Add event listener to the "Use these dimensions" button
+                        document.getElementById('use_detected_size').addEventListener('click', function() {
+                            applyDetectedDimensions(data);
+                        });
+                        
+                        // Add event listeners to the radio buttons
+                        document.querySelectorAll('input[name="dimension_unit"]').forEach(function(radio) {
+                            radio.addEventListener('change', function() {
+                                document.getElementById('use_detected_size').click();
+                            });
+                        });
+                        
+                        // Always automatically apply the dimensions - this fixes the issue where dimensions
+                        // weren't being automatically applied
+                        applyDetectedDimensions(data);
+                        
+                    } else {
+                        // Show error message
+                        document.getElementById('auto_dimensions').innerHTML = `
+                            <div class="alert alert-warning mb-3">
+                                <div class="mb-0">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <strong>Couldn't detect dimensions:</strong> Please enter them manually.
+                                </div>
+                            </div>
+                        `;
+                        console.error('Error detecting dimensions:', data.error);
+                    }
+                })
+                .catch(error => {
+                    window.hideLoading();
+                    console.error('Error:', error);
+                    document.getElementById('auto_dimensions').innerHTML = `
+                        <div class="alert alert-warning mb-3">
+                            <div class="mb-0">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>Couldn't detect dimensions:</strong> Please enter them manually.
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+        });
+        
+        // Function to apply detected dimensions (extracted to avoid code duplication)
+        function applyDetectedDimensions(data) {
+            const selectedUnit = document.querySelector('input[name="dimension_unit"]:checked').value;
+            const widthInput = document.getElementById('sticker_width');
+            const heightInput = document.getElementById('sticker_height');
+            
+            if (selectedUnit === 'mm') {
+                widthInput.value = data.dimensions.mm.width;
+                heightInput.value = data.dimensions.mm.height;
+            } else if (selectedUnit === 'inches') {
+                // Convert inches to mm for the form
+                widthInput.value = (data.dimensions.inches.width * 25.4).toFixed(2);
+                heightInput.value = (data.dimensions.inches.height * 25.4).toFixed(2);
+            } else if (selectedUnit === 'pixels') {
+                // Convert pixels to mm for the form
+                const dpiX = data.dimensions.dpi.x || 72;
+                const dpiY = data.dimensions.dpi.y || 72;
+                widthInput.value = ((data.dimensions.pixels.width / dpiX) * 25.4).toFixed(2);
+                heightInput.value = ((data.dimensions.pixels.height / dpiY) * 25.4).toFixed(2);
+            }
+            
+            // Show tooltip
+            window.showTooltip('Dimensions applied!');
+            
+            // Update interactive preview
+            initializeSliders();
+            updateCombinedPreview();
+            updateValidation(); // Add validation update
+        }
+        
+        // Toggle custom paper size options
+        document.getElementById('use_custom_paper').addEventListener('change', function() {
+            if (this.checked) {
+                document.getElementById('standard_paper_options').classList.add('d-none');
+                document.getElementById('custom_paper_options').classList.remove('d-none');
+                // Update slider ranges and preview
+                updateSliderRanges();
+                updateCombinedPreview();
+                updateValidation();
+            } else {
+                document.getElementById('standard_paper_options').classList.remove('d-none');
+                document.getElementById('custom_paper_options').classList.add('d-none');
+                // Update slider ranges and preview
+                updateSliderRanges();
+                updateCombinedPreview();
+                updateValidation();
+            }
+        });
+        
+        // Interactive preview functionality
+        // Elements
+        const widthInput = document.getElementById('sticker_width');
+        const heightInput = document.getElementById('sticker_height');
+        const widthSlider = document.getElementById('sticker-width-slider');
+        const heightSlider = document.getElementById('sticker-height-slider');
+        const widthValue = document.getElementById('width-value');
+        const heightValue = document.getElementById('height-value');
+        const marginSlider = document.getElementById('margin-slider');
+        const spacingSlider = document.getElementById('spacing-slider');
+        const marginValue = document.getElementById('margin-value');
+        const spacingValue = document.getElementById('spacing-value');
+        const maintainRatioCheckbox = document.getElementById('maintain-ratio');
+        const itemsPerPageElement = document.getElementById('items-per-page');
+        const gridLayoutElement = document.getElementById('grid-layout');
+        const previewStatsElement = document.getElementById('preview-stats');
+        
+        // Get margin inputs
+        const marginTopInput = document.getElementById('margin_top');
+        const marginRightInput = document.getElementById('margin_right');
+        const marginBottomInput = document.getElementById('margin_bottom');
+        const marginLeftInput = document.getElementById('margin_left');
+        
+        // Get spacing inputs
+        const horizontalSpacingInput = document.getElementById('horizontal_spacing');
+        const verticalSpacingInput = document.getElementById('vertical_spacing');
+        
+        // Initialize sliders with current values
+        function initializeSliders() {
+            const currentWidth = parseFloat(widthInput.value) || 50;
+            const currentHeight = parseFloat(heightInput.value) || 50;
+            
+            // Set slider ranges based on paper size
+            updateSliderRanges();
+            
+            // Set initial values
+            widthSlider.value = currentWidth;
+            heightSlider.value = currentHeight;
+            widthValue.textContent = currentWidth;
+            heightValue.textContent = currentHeight;
+            
+            // Initial margin value (using top margin as reference)
+            const marginVal = parseFloat(marginTopInput.value) || 10;
+            marginSlider.value = marginVal;
+            marginValue.textContent = marginVal;
+            
+            // Initial spacing value (using horizontal spacing as reference)
+            const spacingVal = parseFloat(horizontalSpacingInput.value) || 2;
+            spacingSlider.value = spacingVal;
+            spacingValue.textContent = spacingVal;
+            
+            // Initial aspect ratio
+            window.originalRatio = currentHeight / currentWidth;
+        }
+        
+        // Update slider ranges based on paper size
+        function updateSliderRanges() {
+            const paperWidth = getPaperWidth();
+            const paperHeight = getPaperHeight();
+            
+            // Set max values for sliders to the full paper size, not just half
+            // This fixes the 200mm limitation issue
+            widthSlider.max = Math.min(Math.floor(paperWidth), 1000);
+            heightSlider.max = Math.min(Math.floor(paperHeight), 1000);
+            
+            // Update sliders if current value is greater than max
+            if (parseFloat(widthSlider.value) > widthSlider.max) {
+                widthSlider.value = widthSlider.max;
+                widthValue.textContent = widthSlider.max;
+                widthInput.value = widthSlider.max;
+            }
+            
+            if (parseFloat(heightSlider.value) > heightSlider.max) {
+                heightSlider.value = heightSlider.max;
+                heightValue.textContent = heightSlider.max;
+                heightInput.value = heightSlider.max;
+            }
+            
+            // Also update the margin slider max value based on paper dimensions
+            marginSlider.max = Math.min(Math.floor(paperWidth / 4), Math.floor(paperHeight / 4));
+            
+            // Set spacing slider max value
+            spacingSlider.max = 50;
+        }
+        
+        // Get paper dimensions
+        function getPaperWidth() {
+            const useCustomPaper = document.getElementById('use_custom_paper').checked;
+            
+            if (useCustomPaper) {
+                return parseFloat(document.getElementById('custom_paper_width').value);
+            } else {
+                const paperSelect = document.getElementById('paper_size');
+                const selectedOption = paperSelect.options[paperSelect.selectedIndex];
+                return parseFloat(selectedOption.getAttribute('data-width'));
+            }
+        }
+        
+        function getPaperHeight() {
+            const useCustomPaper = document.getElementById('use_custom_paper').checked;
+            
+            if (useCustomPaper) {
+                return parseFloat(document.getElementById('custom_paper_height').value);
+            } else {
+                const paperSelect = document.getElementById('paper_size');
+                const selectedOption = paperSelect.options[paperSelect.selectedIndex];
+                return parseFloat(selectedOption.getAttribute('data-height'));
+            }
+        }
+        
+        // Update all form inputs and preview when sliders change
+        widthSlider.addEventListener('input', function() {
+            const newWidth = parseFloat(this.value);
+            widthValue.textContent = newWidth;
+            widthInput.value = newWidth;
+            
+            // If maintaining aspect ratio, update height accordingly
+            if (maintainRatioCheckbox.checked) {
+                const newHeight = Math.round(newWidth * window.originalRatio);
+                heightSlider.value = newHeight;
+                heightValue.textContent = newHeight;
+                heightInput.value = newHeight;
+            }
+            
+            updateCombinedPreview();
+            updateValidation();
+        });
+        
+        heightSlider.addEventListener('input', function() {
+            const newHeight = parseFloat(this.value);
+            heightValue.textContent = newHeight;
+            heightInput.value = newHeight;
+            
+            // If maintaining aspect ratio, update width accordingly
+            if (maintainRatioCheckbox.checked) {
+                const newWidth = Math.round(newHeight / window.originalRatio);
+                widthSlider.value = newWidth;
+                widthValue.textContent = newWidth;
+                widthInput.value = newWidth;
+            }
+            
+            updateCombinedPreview();
+            updateValidation();
+        });
+        
+        marginSlider.addEventListener('input', function() {
+            const margin = parseFloat(this.value);
+            marginValue.textContent = margin;
+            
+            // Update all margin inputs
+            marginTopInput.value = margin;
+            marginRightInput.value = margin;
+            marginBottomInput.value = margin;
+            marginLeftInput.value = margin;
+            
+            updateCombinedPreview();
+            updateValidation();
+        });
+        
+        spacingSlider.addEventListener('input', function() {
+            const spacing = parseFloat(this.value);
+            spacingValue.textContent = spacing;
+            
+            // Update spacing inputs
+            horizontalSpacingInput.value = spacing;
+            verticalSpacingInput.value = spacing;
+            
+            updateCombinedPreview();
+            updateValidation();
+        });
+        
+        // Combined preview update function
+        function updateCombinedPreview() {
+            // Get current values
+            const stickerWidth = parseFloat(widthInput.value);
+            const stickerHeight = parseFloat(heightInput.value);
+            
+            if (!stickerWidth || !stickerHeight) {
+                return; // Missing required values
+            }
+            
+            // Get paper dimensions
+            let paperWidth = getPaperWidth();
+            let paperHeight = getPaperHeight();
+            
+            // Apply orientation
+            const orientation = document.getElementById('paper_orientation').value;
+            if ((orientation === 'landscape' && paperWidth < paperHeight) ||
+                (orientation === 'portrait' && paperWidth > paperHeight)) {
+                [paperWidth, paperHeight] = [paperHeight, paperWidth];
+            }
+            
+            // Get margins and spacing
+            const marginTop = parseFloat(marginTopInput.value) || 10;
+            const marginRight = parseFloat(marginRightInput.value) || 10;
+            const marginBottom = parseFloat(marginBottomInput.value) || 10;
+            const marginLeft = parseFloat(marginLeftInput.value) || 10;
+            const horizontalSpacing = parseFloat(horizontalSpacingInput.value) || 2;
+            const verticalSpacing = parseFloat(verticalSpacingInput.value) || 2;
+            
+            // Calculate printable area
+            const printableWidth = paperWidth - marginLeft - marginRight;
+            const printableHeight = paperHeight - marginTop - marginBottom;
+            
+            // Calculate how many stickers fit
+            const stickersPerRow = Math.floor(printableWidth / (stickerWidth + horizontalSpacing));
+            const rowsPerPage = Math.floor(printableHeight / (stickerHeight + verticalSpacing));
+            
+            // Calculate total stickers per page
+            const totalStickers = stickersPerRow * rowsPerPage;
+            
+            // Update UI
+            itemsPerPageElement.textContent = totalStickers;
+            gridLayoutElement.textContent = `${stickersPerRow} × ${rowsPerPage}`;
+            previewStatsElement.textContent = `${totalStickers} items (${stickersPerRow}×${rowsPerPage} grid) on ${paperWidth}×${paperHeight}mm paper`;
+            
+            // Update paper visualization
+            const paperVisual = document.querySelector('.paper-visual');
+            
+            // Adjust paper visual size to maintain aspect ratio with fixed height
+            const containerWidth = paperVisual.parentElement.clientWidth;
+            const maxHeight = 400; // Max height for the paper visual
+            
+            // Calculate scale to fit in container
+            const paperAspectRatio = paperHeight / paperWidth;
+            const visualWidth = Math.min(containerWidth, maxHeight / paperAspectRatio);
+            const visualHeight = visualWidth * paperAspectRatio;
+            
+            paperVisual.style.width = visualWidth + 'px';
+            paperVisual.style.height = visualHeight + 'px';
+            
+            // Calculate the scale factor
+            const scaleX = visualWidth / paperWidth;
+            const scaleY = visualHeight / paperHeight;
+            
+            // Update printable area
+            const printableArea = document.querySelector('.printable-area');
+            printableArea.style.top = (marginTop * scaleY) + 'px';
+            printableArea.style.left = (marginLeft * scaleX) + 'px';
+            printableArea.style.width = (printableWidth * scaleX) + 'px';
+            printableArea.style.height = (printableHeight * scaleY) + 'px';
+            
+            // Update stickers visualization
+            const stickersContainer = document.getElementById('stickers-container');
+            stickersContainer.innerHTML = '';
+            
+            for (let row = 0; row < rowsPerPage; row++) {
+                for (let col = 0; col < stickersPerRow; col++) {
+                    const stickerX = marginLeft + col * (stickerWidth + horizontalSpacing);
+                    const stickerY = marginTop + row * (stickerHeight + verticalSpacing);
+                    
+                    const stickerElement = document.createElement('div');
+                    stickerElement.className = 'sticker-preview-item';
+                    stickerElement.style.left = (stickerX * scaleX) + 'px';
+                    stickerElement.style.top = (stickerY * scaleY) + 'px';
+                    stickerElement.style.width = (stickerWidth * scaleX) + 'px';
+                    stickerElement.style.height = (stickerHeight * scaleY) + 'px';
+                    
+                    stickersContainer.appendChild(stickerElement);
+                }
+            }
+        }
+        
+        // Update all inputs when form fields change
+        widthInput.addEventListener('input', function() {
+            widthSlider.value = this.value;
+            widthValue.textContent = this.value;
+            
+            if (maintainRatioCheckbox.checked) {
+                const newHeight = Math.round(parseFloat(this.value) * window.originalRatio);
+                heightSlider.value = newHeight;
+                heightValue.textContent = newHeight;
+                heightInput.value = newHeight;
+            }
+            
+            updateCombinedPreview();
+            updateValidation();
+        });
+        
+        heightInput.addEventListener('input', function() {
+            heightSlider.value = this.value;
+            heightValue.textContent = this.value;
+            
+            if (maintainRatioCheckbox.checked) {
+                const newWidth = Math.round(parseFloat(this.value) / window.originalRatio);
+                widthSlider.value = newWidth;
+                widthValue.textContent = newWidth;
+                widthInput.value = newWidth;
+            }
+            
+            updateCombinedPreview();
+            updateValidation();
+        });
+        
+        // Listen for paper orientation and size changes
+        document.getElementById('paper_orientation').addEventListener('change', function() {
+            updateSliderRanges();
+            updateCombinedPreview();
+            updateValidation();
+        });
+        
+        document.getElementById('paper_size').addEventListener('change', function() {
+            updateSliderRanges();
+            updateCombinedPreview();
+            updateValidation();
+        });
+        
+        // Listen for custom paper changes
+        document.getElementById('custom_paper_width').addEventListener('input', function() {
+            updateSliderRanges();
+            updateCombinedPreview();
+            updateValidation();
+        });
+        
+        document.getElementById('custom_paper_height').addEventListener('input', function() {
+            updateSliderRanges();
+            updateCombinedPreview();
+            updateValidation();
+        });
+        
+        // When aspect ratio toggle changes
+        maintainRatioCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                // Update current ratio
+                window.originalRatio = parseFloat(heightInput.value) / parseFloat(widthInput.value);
+            }
+        });
+        
+        // Help modal
+        document.getElementById('help-btn').addEventListener('click', function() {
+            const helpModal = new bootstrap.Modal(document.getElementById('helpModal'));
+            helpModal.show();
+        });
+        
+        // Form submission
+        document.getElementById('layout-form').addEventListener('submit', function(event) {
+            // Validate before submission
+            const previewValidation = document.getElementById('preview-validation-message');
+            if (previewValidation && previewValidation.classList.contains('alert-danger')) {
+                event.preventDefault();
+                previewValidation.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+                window.showTooltip('Please fix the errors before submitting', 3000);
+                return false;
+            }
+            
+            // Show loading indicator
+            window.showLoading('Calculating optimal layout...');
+        });
+        
+        // Live validation function
+        function updateValidation() {
+            const previewValidation = document.getElementById('preview-validation-message');
+            const calculateBtn = document.getElementById('calculate-btn');
+            
+            if (!previewValidation) return; // Skip if element doesn't exist
+            
+            // Get current values
+            const stickerWidth = parseFloat(document.getElementById('sticker_width').value);
+            const stickerHeight = parseFloat(document.getElementById('sticker_height').value);
+            
+            if (!stickerWidth || !stickerHeight) {
+                previewValidation.textContent = 'Please specify item dimensions.';
+                previewValidation.className = 'alert alert-warning d-block mt-2';
+                calculateBtn.disabled = true;
+                return;
+            }
+            
+            // Get paper dimensions
+            let paperWidth = getPaperWidth();
+            let paperHeight = getPaperHeight();
+            
+            // Apply orientation
+            const orientation = document.getElementById('paper_orientation').value;
+            if ((orientation === 'landscape' && paperWidth < paperHeight) ||
+                (orientation === 'portrait' && paperWidth > paperHeight)) {
+                [paperWidth, paperHeight] = [paperHeight, paperWidth];
+            }
+            
+            // Get margins
+            const marginTop = parseFloat(document.getElementById('margin_top').value) || 10;
+            const marginRight = parseFloat(document.getElementById('margin_right').value) || 10;
+            const marginBottom = parseFloat(document.getElementById('margin_bottom').value) || 10;
+            const marginLeft = parseFloat(document.getElementById('margin_left').value) || 10;
+            
+            // Calculate printable area
+            const printableWidth = paperWidth - marginLeft - marginRight;
+            const printableHeight = paperHeight - marginTop - marginBottom;
+            
+            // Validate dimensions
+            if (stickerWidth > printableWidth || stickerHeight > printableHeight) {
+                previewValidation.textContent = 'Item size is too large for the printable area with these margins.';
+                previewValidation.className = 'alert alert-danger d-block mt-2';
+                calculateBtn.disabled = true;
+            } else if (printableWidth <= 0 || printableHeight <= 0) {
+                previewValidation.textContent = 'Margins are too large for the selected paper size.';
+                previewValidation.className = 'alert alert-danger d-block mt-2';
+                calculateBtn.disabled = true;
+            } else {
+                const horizontalSpacing = parseFloat(document.getElementById('horizontal_spacing').value) || 2;
+                const verticalSpacing = parseFloat(document.getElementById('vertical_spacing').value) || 2;
+                
+                // Calculate how many stickers fit
+                const stickersPerRow = Math.floor(printableWidth / (stickerWidth + horizontalSpacing));
+                const rowsPerPage = Math.floor(printableHeight / (stickerHeight + verticalSpacing));
+                
+                if (stickersPerRow <= 0 || rowsPerPage <= 0) {
+                    previewValidation.textContent = 'Cannot fit any items on the page with current settings.';
+                    previewValidation.className = 'alert alert-danger d-block mt-2';
+                    calculateBtn.disabled = true;
+                } else {
+                    // Calculate total stickers and efficiency
+                    const totalStickers = stickersPerRow * rowsPerPage;
+                    const printableArea = printableWidth * printableHeight;
+                    const stickerArea = stickerWidth * stickerHeight * totalStickers;
+                    const efficiency = (stickerArea / printableArea) * 100;
+                    
+                    // Show efficiency message
+                    if (efficiency < 50) {
+                        previewValidation.textContent = `Low layout efficiency (${efficiency.toFixed(1)}%). Consider adjusting item size or spacing to reduce waste.`;
+                        previewValidation.className = 'alert alert-warning d-block mt-2';
+                    } else if (efficiency > 90) {
+                        previewValidation.textContent = `High layout efficiency (${efficiency.toFixed(1)}%)! Good use of paper space.`;
+                        previewValidation.className = 'alert alert-success d-block mt-2';
+                    } else {
+                        previewValidation.textContent = `Layout efficiency: ${efficiency.toFixed(1)}%`;
+                        previewValidation.className = 'alert alert-info d-block mt-2';
+                    }
+                    
+                    calculateBtn.disabled = false;
+                }
+            }
+        }
+        
+        // Don't initialize sliders or update preview until an image is selected
+        // This fixes the issue with 165 items showing up without any image
+        const sticker_image = document.getElementById('sticker_image');
+        if (sticker_image && sticker_image.files && sticker_image.files.length > 0) {
+            // Only initialize if an image is already selected (e.g. after validation error)
+            initializeSliders();
+            updateCombinedPreview();
+            updateValidation();
+        } else {
+            // If there's a validation-message area, populate it with instructions
+            const previewValidation = document.getElementById('preview-validation-message');
+            if (previewValidation) {
+                previewValidation.textContent = 'Please upload an image to begin.';
+                previewValidation.className = 'alert alert-info d-block mt-2';
+            }
+            
+            // Disable the calculate button until an image is uploaded
+            const calculateBtn = document.getElementById('calculate-btn');
+            if (calculateBtn) {
+                calculateBtn.disabled = true;
+            }
+        }
+        
+        // Smooth scroll to validation errors if present
+        if (document.querySelector('#validation-errors:not(.d-none)')) {
+            document.querySelector('#validation-errors').scrollIntoView({ 
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
+    });
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- Validation error display area at the top of the form -->
+<div id="validation-errors" class="mb-4 {% if not messages %}d-none{% endif %}">
+    <div class="alert alert-danger">
+        <h6 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>Please check the following issues:</h6>
+        <ul class="mb-0 list-unstyled">
+            {% for message in messages %}
+                <li><i class="fas fa-circle me-2" style="font-size: 6px; vertical-align: middle;"></i> {{ message }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<form method="post" action="{% url 'calculate_layout' %}" enctype="multipart/form-data" id="layout-form">
+    {% csrf_token %}
+
+    <!-- Step 1: Upload Image -->
+    <div class="mb-4">
+        <div class="d-flex align-items-center mb-3">
+            <div class="step-icon">1</div>
+            <h5 class="mb-0">Upload Your Sticker or Flyer</h5>
+        </div>
+        
+        <div class="mb-3">
+            <label for="sticker_image" class="form-label">
+                Image <span class="text-danger">*</span>
+            </label>
+            <input type="file" class="form-control" id="sticker_image" name="sticker_image" accept="image/*" required>
+            <div class="form-text">
+                <i class="fas fa-info-circle me-1"></i> 
+                Supported formats: PNG, JPG, GIF, SVG
+            </div>
+        </div>
+        
+        <div id="sticker_preview" class="text-center mb-3 d-none">
+            <p><small class="text-muted">Preview:</small></p>
+            <div class="sticker-preview">
+                <img id="preview_image" class="img-fluid rounded" style="max-height: 150px;">
+            </div>
+        </div>
+        
+        <!-- Auto-detected dimensions -->
+        <div id="auto_dimensions" class="d-none">
+            <div class="alert alert-info mb-3">
+                <div class="mb-2">
+                    <i class="fas fa-ruler-combined me-2"></i>
+                    <strong>Detected Dimensions:</strong>
+                </div>
+                <div class="row">
+                    <div class="col-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_mm" value="mm" checked>
+                            <label class="form-check-label" for="unit_mm">
+                                <span id="dim_mm">0 × 0</span> mm
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_inches" value="inches">
+                            <label class="form-check-label" for="unit_inches">
+                                <span id="dim_inches">0 × 0</span> inches
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_pixels" value="pixels">
+                            <label class="form-check-label" for="unit_pixels">
+                                <span id="dim_pixels">0 × 0</span> px
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2 small text-muted">
+                    Detected at <span id="dim_dpi">72 × 72</span> DPI. 
+                    <button type="button" class="btn btn-link btn-sm p-0" id="use_detected_size">
+                        <i class="fas fa-magic me-1"></i> Use these dimensions
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Hidden form fields for the original form submission -->
+        <div class="row visually-hidden">
+            <div class="col">
+                <div class="mb-3">
+                    <label for="sticker_width" class="form-label">Width (mm)</label>
+                    <input type="number" class="form-control" id="sticker_width" name="sticker_width" min="5" max="1000" value="{{ form_data.sticker_width|default:'50' }}">
+                </div>
+            </div>
+            <div class="col">
+                <div class="mb-3">
+                    <label for="sticker_height" class="form-label">Height (mm)</label>
+                    <input type="number" class="form-control" id="sticker_height" name="sticker_height" min="5" max="1000" value="{{ form_data.sticker_height|default:'50' }}">
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Step 2: Paper Settings -->
+    <div class="mb-4">
+        <div class="d-flex align-items-center mb-3">
+            <div class="step-icon">2</div>
+            <h5 class="mb-0">Canvas Settings</h5>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-7">
+                <div id="standard_paper_options">
+                    <div class="mb-3">
+                        <label for="paper_size" class="form-label">
+                            Canvas Size <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="paper_size" name="paper_size" required>
+                            {% for size in paper_sizes %}
+                                <option value="{{ size.id }}" data-width="{{ size.width_mm }}" data-height="{{ size.height_mm }}" {% if form_data.paper_size == size.id %}selected{% endif %}>
+                                    {{ size.name }} ({{ size.width_mm }}mm × {{ size.height_mm }}mm)
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="custom_paper_options" class="d-none">
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label for="custom_paper_width" class="form-label">
+                                    Width (mm)
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="custom_paper_width" name="custom_paper_width" value="{{ form_data.custom_paper_width|default:'210' }}" min="50" max="2000" step="0.1">
+                                    <span class="input-group-text">mm</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label for="custom_paper_height" class="form-label">
+                                    Height (mm)
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="custom_paper_height" name="custom_paper_height" value="{{ form_data.custom_paper_height|default:'297' }}" min="50" max="2000" step="0.1">
+                                    <span class="input-group-text">mm</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="paper_orientation" class="form-label">
+                                Orientation
+                            </label>
+                            <select class="form-select" id="paper_orientation" name="paper_orientation">
+                                <option value="portrait" {% if form_data.paper_orientation == 'portrait' %}selected{% endif %}>Portrait</option>
+                                <option value="landscape" {% if form_data.paper_orientation == 'landscape' %}selected{% endif %}>Landscape</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check mb-3 mt-4">
+                            <input class="form-check-input" type="checkbox" id="use_custom_paper" name="use_custom_paper" value="true" {% if form_data.use_custom_paper == 'true' %}checked{% endif %}>
+                            <label class="form-check-label" for="use_custom_paper">
+                                Use custom paper size
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Step 3: Interactive Preview with Margins & Spacing -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-eye me-2"></i> Interactive Preview</span>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="maintain-ratio" checked>
+                <label class="form-check-label" for="maintain-ratio">Maintain Aspect Ratio</label>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-7">
+                    <!-- Combined visualization -->
+                    <div id="combined-preview" class="position-relative mb-3">
+                        <div class="paper-visual">
+                            <div class="printable-area"></div>
+                            <div id="stickers-container"></div>
+                        </div>
+                        <div class="small text-muted mt-2 text-center">
+                            <span id="preview-stats"></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Layout information -->
+                    <div class="layout-info p-3 bg-light rounded mt-3">
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="mb-2">
+                                    <strong><i class="fas fa-border-all me-2"></i> Grid Layout:</strong>
+                                    <span id="grid-layout">0 × 0</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="mb-2">
+                                    <strong><i class="fas fa-copy me-2"></i> Items per page:</strong>
+                                    <span id="items-per-page">0</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Validation message area within the preview -->
+                        <div id="preview-validation-message" class="alert d-none mt-2"></div>
+                    </div>
+                </div>
+                <div class="col-md-5">
+                    <!-- Dimension controls with sliders -->
+                    <div class="dimension-controls">
+                        <h6 class="mb-3">Item Dimensions</h6>
+                        
+                        <!-- Sticker Width -->
+                        <div class="mb-3">
+                            <label for="sticker-width-slider" class="form-label d-flex justify-content-between">
+                                <span>Width</span>
+                                <div>
+                                    <span id="width-value" class="slider-value">{{ form_data.sticker_width|default:'50' }}</span> mm
+                                </div>
+                            </label>
+                            <input type="range" class="form-range" id="sticker-width-slider" min="10" max="1000" step="1" value="{{ form_data.sticker_width|default:'50' }}">
+                        </div>
+                        
+                        <!-- Sticker Height -->
+                        <div class="mb-3">
+                            <label for="sticker-height-slider" class="form-label d-flex justify-content-between">
+                                <span>Height</span>
+                                <div>
+                                    <span id="height-value" class="slider-value">{{ form_data.sticker_height|default:'50' }}</span> mm
+                                </div>
+                            </label>
+                            <input type="range" class="form-range" id="sticker-height-slider" min="10" max="1000" step="1" value="{{ form_data.sticker_height|default:'50' }}">
+                        </div>
+                        
+                        <!-- Margins -->
+                        <h6 class="mb-2 mt-4">Margins & Spacing</h6>
+                        <div class="mb-3">
+                            <label for="margin-slider" class="form-label d-flex justify-content-between">
+                                <span>All Margins</span>
+                                <div>
+                                    <span id="margin-value" class="slider-value">{{ form_data.margin_top|default:'10' }}</span> mm
+                                </div>
+                            </label>
+                            <input type="range" class="form-range" id="margin-slider" min="0" max="100" value="{{ form_data.margin_top|default:'10' }}" step="1">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="spacing-slider" class="form-label d-flex justify-content-between">
+                                <span>Item Spacing</span>
+                                <div>
+                                    <span id="spacing-value" class="slider-value">{{ form_data.horizontal_spacing|default:'2' }}</span> mm
+                                </div>
+                            </label>
+                            <input type="range" class="form-range" id="spacing-slider" min="0" max="50" value="{{ form_data.horizontal_spacing|default:'2' }}" step="0.5">
+                        </div>
+                        
+                        <!-- Individual margins (hidden but updated) -->
+                        <div class="d-none">
+                            <input type="number" id="margin_top" name="margin_top" value="{{ form_data.margin_top|default:'10' }}">
+                            <input type="number" id="margin_right" name="margin_right" value="{{ form_data.margin_right|default:'10' }}">
+                            <input type="number" id="margin_bottom" name="margin_bottom" value="{{ form_data.margin_bottom|default:'10' }}">
+                            <input type="number" id="margin_left" name="margin_left" value="{{ form_data.margin_left|default:'10' }}">
+                            <input type="number" id="horizontal_spacing" name="horizontal_spacing" value="{{ form_data.horizontal_spacing|default:'2' }}">
+                            <input type="number" id="vertical_spacing" name="vertical_spacing" value="{{ form_data.vertical_spacing|default:'2' }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Layout name -->
+    <div class="mb-4">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="layout_name" class="form-label">Layout Name</label>
+                    <input type="text" class="form-control" id="layout_name" name="layout_name" value="{{ form_data.layout_name|default:'New Layout' }}">
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="d-grid gap-2">
+        <button type="submit" class="btn btn-primary btn-lg" id="calculate-btn">
+            <i class="fas fa-calculator me-2"></i> Calculate & Generate Layout
+        </button>
+    </div>
+</form>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- JavaScript updates for validation and slider range -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize sliders with appropriate ranges
+        updateSliderRanges();
+        
+        // Function to update slider ranges based on paper size
+        function updateSliderRanges() {
+            const paperWidth = getPaperWidth();
+            const paperHeight = getPaperHeight();
+            
+            // Set max values for sliders to the full paper size, not just half
+            // This fixes the 200mm limitation issue
+            const widthSlider = document.getElementById('sticker-width-slider');
+            const heightSlider = document.getElementById('sticker-height-slider');
+            
+            if (widthSlider && heightSlider) {
+                widthSlider.max = Math.min(Math.floor(paperWidth), 1000);
+                heightSlider.max = Math.min(Math.floor(paperHeight), 1000);
+                
+                // Update sliders if current value is greater than max
+                if (parseFloat(widthSlider.value) > widthSlider.max) {
+                    widthSlider.value = widthSlider.max;
+                    document.getElementById('width-value').textContent = widthSlider.max;
+                    document.getElementById('sticker_width').value = widthSlider.max;
+                }
+                
+                if (parseFloat(heightSlider.value) > heightSlider.max) {
+                    heightSlider.value = heightSlider.max;
+                    document.getElementById('height-value').textContent = heightSlider.max;
+                    document.getElementById('sticker_height').value = heightSlider.max;
+                }
+            }
+            
+            // Also update the margin slider max value based on paper dimensions
+            const marginSlider = document.getElementById('margin-slider');
+            if (marginSlider) {
+                // Set max margin to 1/4 of the smallest paper dimension
+                marginSlider.max = Math.min(Math.floor(paperWidth / 4), Math.floor(paperHeight / 4));
+            }
+        }
+        
+        // Make sure paper size change event listeners update slider ranges
+        document.getElementById('paper_size').addEventListener('change', updateSliderRanges);
+        document.getElementById('paper_orientation').addEventListener('change', updateSliderRanges);
+        
+        // Add custom paper dimension change listeners
+        document.getElementById('custom_paper_width').addEventListener('input', updateSliderRanges);
+        document.getElementById('custom_paper_height').addEventListener('input', updateSliderRanges);
+        
+        // Make sure toggle custom paper affects the slider ranges
+        document.getElementById('use_custom_paper').addEventListener('change', updateSliderRanges);
+        
+        // Add live validation to show warnings in the preview area
+        function updateValidation() {
+            const previewValidation = document.getElementById('preview-validation-message');
+            const calculateBtn = document.getElementById('calculate-btn');
+            
+            // Get current values
+            const stickerWidth = parseFloat(document.getElementById('sticker_width').value);
+            const stickerHeight = parseFloat(document.getElementById('sticker_height').value);
+            
+            // Get paper dimensions
+            let paperWidth = getPaperWidth();
+            let paperHeight = getPaperHeight();
+            
+            // Apply orientation
+            const orientation = document.getElementById('paper_orientation').value;
+            if ((orientation === 'landscape' && paperWidth < paperHeight) ||
+                (orientation === 'portrait' && paperWidth > paperHeight)) {
+                [paperWidth, paperHeight] = [paperHeight, paperWidth];
+            }
+            
+            // Get margins
+            const marginTop = parseFloat(document.getElementById('margin_top').value) || 10;
+            const marginRight = parseFloat(document.getElementById('margin_right').value) || 10;
+            const marginBottom = parseFloat(document.getElementById('margin_bottom').value) || 10;
+            const marginLeft = parseFloat(document.getElementById('margin_left').value) || 10;
+            
+            // Calculate printable area
+            const printableWidth = paperWidth - marginLeft - marginRight;
+            const printableHeight = paperHeight - marginTop - marginBottom;
+            
+            // Validate dimensions
+            if (stickerWidth > printableWidth || stickerHeight > printableHeight) {
+                previewValidation.textContent = 'Item size is too large for the printable area with these margins.';
+                previewValidation.className = 'alert alert-danger d-block mt-2';
+                calculateBtn.disabled = true;
+            } else if (printableWidth <= 0 || printableHeight <= 0) {
+                previewValidation.textContent = 'Margins are too large for the selected paper size.';
+                previewValidation.className = 'alert alert-danger d-block mt-2';
+                calculateBtn.disabled = true;
+            } else {
+                previewValidation.className = 'alert d-none mt-2';
+                calculateBtn.disabled = false;
+                
+                // Add efficiency information
+                const horizontalSpacing = parseFloat(document.getElementById('horizontal_spacing').value) || 2;
+                const verticalSpacing = parseFloat(document.getElementById('vertical_spacing').value) || 2;
+                
+                // Calculate how many stickers fit
+                const stickersPerRow = Math.floor(printableWidth / (stickerWidth + horizontalSpacing));
+                const rowsPerPage = Math.floor(printableHeight / (sticker_height + verticalSpacing));
+                
+                if (stickersPerRow > 0 && rowsPerPage > 0) {
+                    // Calculate total stickers and efficiency
+                    const totalStickers = stickersPerRow * rowsPerPage;
+                    const printableArea = printableWidth * printableHeight;
+                    const stickerArea = stickerWidth * stickerHeight * totalStickers;
+                    const efficiency = (stickerArea / printableArea) * 100;
+                    
+                    // Show efficiency message
+                    if (efficiency < 50) {
+                        previewValidation.textContent = `Low layout efficiency (${efficiency.toFixed(1)}%). Consider adjusting item size or spacing to reduce waste.`;
+                        previewValidation.className = 'alert alert-warning d-block mt-2';
+                    } else if (efficiency > 90) {
+                        previewValidation.textContent = `High layout efficiency (${efficiency.toFixed(1)}%)! Good use of paper space.`;
+                        previewValidation.className = 'alert alert-success d-block mt-2';
+                    } else {
+                        previewValidation.textContent = `Layout efficiency: ${efficiency.toFixed(1)}%`;
+                        previewValidation.className = 'alert alert-info d-block mt-2';
+                    }
+                }
+            }
+        }
+        
+        // Call validation on change of relevant form elements
+        document.getElementById('sticker-width-slider').addEventListener('input', updateValidation);
+        document.getElementById('sticker-height-slider').addEventListener('input', updateValidation);
+        document.getElementById('margin-slider').addEventListener('input', updateValidation);
+        document.getElementById('spacing-slider').addEventListener('input', updateValidation);
+        document.getElementById('paper_size').addEventListener('change', updateValidation);
+        document.getElementById('paper_orientation').addEventListener('change', updateValidation);
+        document.getElementById('use_custom_paper').addEventListener('change', updateValidation);
+        document.getElementById('custom_paper_width').addEventListener('input', updateValidation);
+        document.getElementById('custom_paper_height').addEventListener('input', updateValidation);
+        
+        // Initial validation
+        updateValidation();
+        
+        // Smooth scroll to validation errors if present
+        if (document.querySelector('#validation-errors:not(.d-none)')) {
+            document.querySelector('#validation-errors').scrollIntoView({ 
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
+    });
+</script>
+
+
+
+
+
+</body>
+</html>

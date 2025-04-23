@@ -1,0 +1,199 @@
+<!-- templates/layout_generator/saved_layouts.html -->
+{% extends 'base.html' %}
+
+{% block title %}Saved Layouts{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Your Saved Layouts</h1>
+
+{% if layouts %}
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    {% for layout in layouts %}
+    <div class="col">
+        <div class="card h-100">
+            <div class="card-header">
+                <h2 class="h5 mb-0">{{ layout.name }}</h2>
+            </div>
+            <div class="card-body">
+                <div class="preview mb-3" style="height: 200px; overflow: hidden;">
+                    {{ layout.layout_svg|safe }}
+                </div>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Paper Size:</span>
+                        <span>
+                            {% if layout.paper_size %}
+                                {{ layout.paper_size }}
+                            {% else %}
+                                {{ layout.custom_paper_width }} x {{ layout.custom_paper_height }} mm
+                            {% endif %}
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Sticker Size:</span>
+                        <span>{{ layout.sticker_width }} x {{ layout.sticker_height }} mm</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Total Stickers:</span>
+                        <span>{{ layout.total_stickers }}</span>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-footer">
+                <div class="d-grid">
+                    <a href="{% url 'layout_generator:layout_detail' layout.id %}" class="btn btn-primary">View Details</a>
+                </div>
+                <small class="text-muted mt-2">Created on {{ layout.created_at|date:"M d, Y" }}</small>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p>You don't have any saved layouts yet.</p>
+    <a href="{% url 'layout_generator:index' %}" class="btn btn-primary">Create Your First Layout</a>
+</div>
+{% endif %}
+{% endblock %}
+
+<!-- templates/layout_generator/layout_detail.html -->
+{% extends 'base.html' %}
+
+{% block title %}{{ layout.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h2 class="h5 mb-0">Layout Details</h2>
+            </div>
+            <div class="card-body">
+                <h3 class="h4 mb-3">{{ layout.name }}</h3>
+                
+                <h4 class="h6 border-bottom pb-2 mb-3">Paper Settings</h4>
+                <dl class="row">
+                    <dt class="col-sm-6">Paper Size:</dt>
+                    <dd class="col-sm-6">
+                        {% if layout.paper_size %}
+                            {{ layout.paper_size }}
+                        {% else %}
+                            Custom ({{ layout.custom_paper_width }} x {{ layout.custom_paper_height }} mm)
+                        {% endif %}
+                    </dd>
+                </dl>
+                
+                <h4 class="h6 border-bottom pb-2 mb-3">Sticker Settings</h4>
+                <dl class="row">
+                    <dt class="col-sm-6">Sticker Size:</dt>
+                    <dd class="col-sm-6">{{ layout.sticker_width }} x {{ layout.sticker_height }} mm</dd>
+                </dl>
+                
+                <h4 class="h6 border-bottom pb-2 mb-3">Margins</h4>
+                <dl class="row">
+                    <dt class="col-sm-6">Top Margin:</dt>
+                    <dd class="col-sm-6">{{ layout.top_margin }} mm</dd>
+                    
+                    <dt class="col-sm-6">Bottom Margin:</dt>
+                    <dd class="col-sm-6">{{ layout.bottom_margin }} mm</dd>
+                    
+                    <dt class="col-sm-6">Left Margin:</dt>
+                    <dd class="col-sm-6">{{ layout.left_margin }} mm</dd>
+                    
+                    <dt class="col-sm-6">Right Margin:</dt>
+                    <dd class="col-sm-6">{{ layout.right_margin }} mm</dd>
+                </dl>
+                
+                <h4 class="h6 border-bottom pb-2 mb-3">Spacing</h4>
+                <dl class="row">
+                    <dt class="col-sm-6">Horizontal Spacing:</dt>
+                    <dd class="col-sm-6">{{ layout.horizontal_spacing }} mm</dd>
+                    
+                    <dt class="col-sm-6">Vertical Spacing:</dt>
+                    <dd class="col-sm-6">{{ layout.vertical_spacing }} mm</dd>
+                </dl>
+                
+                <h4 class="h6 border-bottom pb-2 mb-3">Layout Results</h4>
+                <dl class="row">
+                    <dt class="col-sm-6">Stickers per Row:</dt>
+                    <dd class="col-sm-6">{{ layout.stickers_per_row }}</dd>
+                    
+                    <dt class="col-sm-6">Number of Rows:</dt>
+                    <dd class="col-sm-6">{{ layout.num_rows }}</dd>
+                    
+                    <dt class="col-sm-6">Total Stickers:</dt>
+                    <dd class="col-sm-6">{{ layout.total_stickers }}</dd>
+                </dl>
+                
+                <div class="d-grid gap-2 mt-4">
+                    <a href="{% url 'layout_generator:index' %}" class="btn btn-primary">Create New Layout</a>
+                    <button class="btn btn-outline-primary" id="downloadSvg">Download SVG</button>
+                    <button class="btn btn-outline-primary" id="downloadPdf">Download PDF</button>
+                </div>
+            </div>
+            <div class="card-footer text-muted">
+                Created on {{ layout.created_at|date:"M d, Y" }}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h2 class="h5 mb-0">Layout Preview</h2>
+            </div>
+            <div class="card-body">
+                <div id="svgPreview" class="border rounded p-2 bg-light text-center">
+                    {{ layout.layout_svg|safe }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // Function to fit SVG to container
+    function fitSvgToContainer() {
+        var svg = $('#svgPreview svg')[0];
+        if (svg) {
+            var containerWidth = $('#svgPreview').width();
+            var svgWidth = svg.getAttribute('width').replace('mm', '');
+            var svgHeight = svg.getAttribute('height').replace('mm', '');
+            var aspectRatio = svgHeight / svgWidth;
+            
+            // Adjust SVG size to fit container while maintaining aspect ratio
+            svg.setAttribute('width', containerWidth);
+            svg.setAttribute('height', containerWidth * aspectRatio);
+        }
+    }
+    
+    // Call fitSvgToContainer on page load and window resize
+    fitSvgToContainer();
+    $(window).resize(function() {
+        fitSvgToContainer();
+    });
+    
+    // Handle SVG download
+    $('#downloadSvg').click(function() {
+        var svgData = $('#svgPreview svg')[0].outerHTML;
+        var svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+        var svgUrl = URL.createObjectURL(svgBlob);
+        var downloadLink = document.createElement('a');
+        downloadLink.href = svgUrl;
+        downloadLink.download = '{{ layout.name }}.svg';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    });
+    
+    // Handle PDF download
+    $('#downloadPdf').click(function() {
+        alert('PDF export functionality will be implemented in a future update.');
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,793 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> Layout Editor - {{ layout.name }}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+    
+
+
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        
+        .main-container {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            padding: 20px;
+        }
+        
+        .sidebar {
+            width: 320px;
+            background: white;
+            border-right: 1px solid #dee2e6;
+            overflow-y: auto;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+        
+        .canvas-container {
+            flex: 1;
+            overflow: auto;
+            background: transparent !important;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            padding: 20px;
+        }
+
+
+    
+.canvas-wrapper {
+    position: relative;
+    background-color: none !important;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    width: fit-content;
+    display: inline-block;
+}
+
+.size-label-vertical {
+    position: absolute;
+    bottom: 10px; /* Move it outside on the top */
+    left: -30px; /* Move it outside on the left */
+    writing-mode: vertical-lr;
+    transform: rotate(180deg);
+    color: #444;
+    background: #f8f8f8;
+
+    border-radius: 4px;
+}
+
+        
+        .card {
+            border-radius: 8px;
+            border: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        
+        .card-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #eee;
+            padding: 12px 15px;
+            font-weight: 600;
+        }
+        
+        .btn-toolbar {
+            margin-bottom: 15px;
+        }
+        
+        .btn-toolbar .btn {
+            margin-right: 5px;
+        }
+        
+        .layout-stats {
+            background: #e9ecef;
+            border-radius: 5px;
+            padding: 10px 15px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        .zoom-controls {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: white;
+            border-radius: 5px;
+            padding: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        
+        .canvas-tools {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: white;
+            border-radius: 5px;
+            padding: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        
+        /* Loading indicator */
+        .loading-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            z-index: 2000;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        
+        .loading-indicator.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        /* Tooltip helper */
+        .tooltip-helper {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(33, 37, 41, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1050;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .tooltip-helper.show {
+            opacity: 1;
+        }
+        
+        /* Collapsible sidebar for mobile */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: -320px;
+                top: 0;
+                bottom: 0;
+                z-index: 1030;
+                box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            }
+            
+            .sidebar.show {
+                left: 0;
+            }
+            
+            .sidebar-toggle {
+                position: fixed;
+                top: 15px;
+                left: 15px;
+                z-index: 1040;
+                background: white;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }
+        }
+    </style>
+
+
+
+
+
+</head>
+<body>
+    <!-- Mobile sidebar toggle -->
+    <button class="btn btn-light sidebar-toggle d-md-none" id="sidebar-toggle">
+        <i class="fas fa-bars"></i>
+    </button>
+    
+    <div class="main-container">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h1 class="h5 mb-0">Layout Editor</h1>
+                <a href="{% url 'index' %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i>
+                </a>
+            </div>
+            
+            <!-- Layout name -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <i class="fas fa-file-alt me-2"></i> Layout Information
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="layout-name" class="form-label">Layout Name</label>
+                        <input type="text" class="form-control" id="layout-name" value="{{ layout.name }}">
+                    </div>
+                    
+              
+                </div>
+            </div>
+            
+            <!-- Sticker tools -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <i class="fas fa-edit me-2"></i> Tools
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="btn-group w-100">
+                            <button id="add-sticker-btn" class="btn btn-outline-primary">
+                                <i class="fas fa-plus me-1"></i> Add
+                            </button>
+                            <button id="clone-sticker-btn" class="btn btn-outline-primary">
+                                <i class="fas fa-copy me-1"></i> Clone
+                            </button>
+                            <button id="delete-sticker-btn" class="btn btn-outline-danger">
+                                <i class="fas fa-trash me-1"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="btn-group w-100">
+                            <button id="undo-btn" class="btn btn-outline-secondary disabled">
+                                <i class="fas fa-undo me-1"></i> Undo
+                            </button>
+                            <button id="redo-btn" class="btn btn-outline-secondary disabled">
+                                <i class="fas fa-redo me-1"></i> Redo
+                            </button>
+                        </div>
+                    </div>
+
+                    
+
+<div class="mb-3">
+    <label class="form-label d-flex justify-content-between">
+        <span>Rotation</span>
+        <span id="rotation-angle">0°</span>
+    </label>
+    <div class="btn-group w-100">
+        <button id="rotate-left-btn" class="btn btn-outline-secondary" title="Rotate Left 15°">
+            <i class="fas fa-undo"></i>
+        </button>
+        <button id="rotate-right-btn" class="btn btn-outline-secondary" title="Rotate Right 15°">
+            <i class="fas fa-redo"></i>
+        </button>
+        <button id="reset-rotation-btn" class="btn btn-outline-secondary" title="Reset Rotation">
+            <i class="fas fa-sync-alt"></i>
+        </button>
+    </div>
+</div>
+
+
+
+
+
+                    
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="show-grid" checked>
+                        <label class="form-check-label" for="show-grid">
+                            <i class="fas fa-border-all me-2 text-muted"></i> Show Grid
+                        </label>
+                    </div>
+                    
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="show-margins" checked>
+                        <label class="form-check-label" for="show-margins">
+                            <i class="fas fa-expand me-2 text-muted"></i> Show Margins
+                        </label>
+                    </div>
+                    
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="lock-stickers">
+                        <label class="form-check-label" for="lock-stickers">
+                            <i class="fas fa-lock me-2 text-muted"></i> Lock Stickers
+                        </label>
+                    </div>
+                    
+                    <div class="alert alert-info p-2 small">
+                        <i class="fas fa-info-circle me-1"></i> Drag stickers to reposition them
+                    </div>
+                </div>
+            </div>
+            
+
+
+
+
+
+
+
+<!-- Paper Information Section -->
+<div class="card mb-3">
+    <div class="card-header">
+        <i class="fas fa-image me-2"></i> Paper Information
+    </div>
+    <div class="card-body">
+
+        <!-- Original Sticker Image -->
+        <div class="mb-3 text-center">
+            <img src="{{ layout.original_image.url }}" alt="Original Sticker" class="img-fluid rounded"
+                style="max-height: 150px;">
+        </div>
+
+        <!-- Item Size -->
+        <div class="mb-2">
+            <strong>Item Size:</strong> {{ layout.sticker_width }} × {{ layout.sticker_height }}mm
+        </div>
+
+        <!-- Paper Size -->
+        <div class="mb-2">
+            <strong>Paper Size:</strong> {{ paper_size.name }}
+        </div>
+
+        <!-- Stickers Generated -->
+        <div class="mb-2">
+            <strong>Stickers Generated:</strong> {{ layout.layout_data.total_stickers }}
+        </div>
+
+        <!-- Grid Layout -->
+        <div class="mb-2">
+            <strong>Grid Layout:</strong> {{ layout.layout_data.stickers_per_row }} × {{layout.layout_data.rows_per_page }}
+        </div>
+
+        <!-- Dimensions -->
+        <div class="mb-2">
+            <strong>Paper Dimensions:</strong> {{ layout.layout_data.paper_width }} × {{ layout.layout_data.paper_height}}mm
+        </div>
+
+        <!-- Margins -->
+        <div class="mb-2">
+            <strong>Margins:</strong>
+            T: {{ layout.margin_top }}mm,
+            R: {{ layout.margin_right }}mm,
+            B: {{ layout.margin_bottom }}mm,
+            L: {{ layout.margin_left }}mm
+        </div>
+
+        <!-- Spacing -->
+        <div>
+            <strong>Spacing:</strong>
+            H: {{ layout.layout_data.spacing.horizontal }}mm,
+            V: {{ layout.layout_data.spacing.vertical }}mm
+        </div>
+
+    </div>
+</div>
+
+        
+        <!-- Download buttons -->
+        <div class="d-grid gap-2 mb-4">
+            <button id="save-layout-btn" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i> Save Layout
+            </button>
+            <div class="btn-group">
+                <a href="{% url 'download_layout' layout_id=layout.id %}?format=pdf" class="btn btn-outline-primary"
+                    target="_blank">
+                    <i class="fas fa-download me-2  me-1"></i> PDF
+                </a>
+                <button id="download-png-btn" class="btn btn-outline-primary">
+                    <i class="fas fa-download me-1"></i> PNG
+                </button>
+            </div>
+        </div>
+
+
+
+
+
+
+
+            <!-- Canvas controls -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <i class="fas fa-search me-2"></i> Canvas Controls
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="btn-group w-100">
+                            <button id="zoom-in-btn" class="btn btn-outline-secondary">
+                                <i class="fas fa-search-plus"></i>
+                            </button>
+                            <button id="zoom-out-btn" class="btn btn-outline-secondary">
+                                <i class="fas fa-search-minus"></i>
+                            </button>
+                            <button id="zoom-reset-btn" class="btn btn-outline-secondary">
+                                <i class="fas fa-expand"></i>
+                            </button>
+                            <button id="center-view-btn" class="btn btn-outline-secondary">
+                                <i class="fas fa-bullseye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="zoom-level" class="form-label d-flex justify-content-between">
+                            <span>Zoom Level</span>
+                            <span id="zoom-percentage">100%</span>
+                        </label>
+                        <input type="range" class="form-range" id="zoom-level" min="30" max="300" value="100">
+                    </div>
+                    
+                    <div class="mb-2">
+                        <button id="reset-layout-btn" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-undo me-1"></i> Reset to Grid
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Paper information -->
+ 
+            
+ 
+
+
+
+
+        <div class="small text-muted mb-2">Tips:</div>
+        <ul class="small text-muted mb-3 ps-3">
+            <li>Make sure to fit items to canvas before printing.</li>
+            <li>Use high-resolution images for best print quality.</li>
+            <li>Save layout for reusage.</li>
+            <li>Double-check margins before saving.</li>
+
+        </ul>
+
+
+
+
+
+
+
+
+        </div>
+        
+        <!-- Canvas area -->
+        <div class="canvas-container">
+
+
+    <div class="canvas-tools">
+        <div class="btn-group btn-group-sm">
+            <button id="mobile-add-btn" class="btn btn-light" title="Add new sticker">
+                <i class="fas fa-plus"></i>
+            </button>
+            <button id="mobile-clone-btn" class="btn btn-light" title="Duplicate sticker">
+                <i class="fas fa-copy"></i>
+            </button>
+            <button id="mobile-delete-btn" class="btn btn-light" title="Delete sticker">
+                <i class="fas fa-trash"></i>
+            </button>
+      
+
+
+
+            <!-- Find the canvas-tools div in your HTML -->
+            <!-- Add these buttons after the existing mobile buttons -->
+            
+            <button id="mobile-rotate-left" class="btn btn-light" title="Rotate Left 30°">
+                <i class="fas fa-undo"></i>
+            </button>
+            <button id="mobile-rotate-right" class="btn btn-light" title="Rotate Right 30°">
+                <i class="fas fa-redo"></i>
+            </button>
+            
+        </div>
+    </div>
+    
+    <div class="zoom-controls">
+        <div class="btn-group btn-group-sm">
+                <button id="mobile-zoom-reset" class="btn btn-light" title="Fit to Canvas">
+                    <i class="fas fa-expand"></i>
+                </button>
+            <button id="mobile-zoom-in" class="btn btn-light" title="Zoom in">
+                <i class="fas fa-search-plus"></i>
+            </button>
+            <button id="mobile-zoom-out" class="btn btn-light" title="Zoom out">
+                <i class="fas fa-search-minus"></i>
+            </button>
+      
+        </div>
+    </div>
+
+
+            
+<div class="canvas-wrapper">
+    <div class="size-label-vertical">{{ paper_size.name }} ({{ layout.layout_data.paper_width }} × {{ layout.layout_data.paper_height }}mm)</div>
+    {{ paper_size.name }} ({{ layout.layout_data.paper_width }} × {{ layout.layout_data.paper_height }}mm)
+    <canvas id="layout-canvas" ></canvas>
+</div>
+
+
+            
+        </div>
+    </div>
+    
+    <!-- Save success modal -->
+    <div class="modal fade" id="saveSuccessModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center py-4">
+                    <i class="fas fa-check-circle text-success fa-4x mb-3"></i>
+                    <h5>Layout Saved Successfully!</h5>
+                    <p class="text-muted">Your sticker layout has been saved.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tooltip Helper -->
+    <div class="tooltip-helper" id="tooltip-helper"></div>
+    
+    <!-- Loading Indicator -->
+    <div class="loading-indicator" id="global-loading">
+        <div class="spinner-border text-primary mb-3" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <h5 id="loading-message">Loading...</h5>
+    </div>
+    
+    <!-- Hidden data for the canvas -->
+    <input type="hidden" id="layout-id" value="{{ layout.id }}">
+    <input type="hidden" id="image-base64" value="data:image/png;base64,{{ image_base64 }}">
+
+<!-- Replace the input with a script tag -->
+<script type="text/javascript">
+    window.layoutData = {{ layout_data_json | safe }};
+</script>
+
+    
+  
+    
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Fabric.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    
+
+
+
+<script>
+    // Enhanced Global Helper Functions
+    document.addEventListener('DOMContentLoaded', function () {
+        // Improved loading indicator with error handling
+        window.showLoading = function (message = 'Loading...') {
+            try {
+                const loading = document.getElementById('global-loading');
+                const messageEl = document.getElementById('loading-message');
+
+                if (!loading || !messageEl) {
+                    console.warn('Loading elements not found');
+                    return;
+                }
+
+                messageEl.textContent = message;
+                loading.classList.add('active');
+
+                // Optional: Auto-hide after 30 seconds in case of hang
+                const autoHideTimer = setTimeout(() => {
+                    window.hideLoading();
+                    window.showTooltip('Loading took too long. Please refresh.');
+                }, 30000);
+
+                // Store timer to allow manual cancellation
+                loading.dataset.autoHideTimer = autoHideTimer;
+            } catch (error) {
+                console.error('Error in showLoading:', error);
+            }
+        };
+
+        // Enhanced hide loading with timer cleanup
+        window.hideLoading = function () {
+            try {
+                const loading = document.getElementById('global-loading');
+
+                if (!loading) {
+                    console.warn('Loading element not found');
+                    return;
+                }
+
+                // Clear auto-hide timer if exists
+                const timer = loading.dataset.autoHideTimer;
+                if (timer) {
+                    clearTimeout(Number(timer));
+                    delete loading.dataset.autoHideTimer;
+                }
+
+                loading.classList.remove('active');
+            } catch (error) {
+                console.error('Error in hideLoading:', error);
+            }
+        };
+
+        // Improved tooltip function with enhanced flexibility
+        window.showTooltip = function (message, options = {}) {
+            try {
+                const tooltip = document.getElementById('tooltip-helper');
+
+                if (!tooltip) {
+                    console.warn('Tooltip element not found');
+                    return;
+                }
+
+                // Default options
+                const {
+                    duration = 2000,
+                    type = 'default',
+                    position = 'bottom'
+                } = options;
+
+                // Set message and style based on type
+                tooltip.textContent = message;
+                tooltip.className = `tooltip-helper show ${type}-tooltip ${position}-tooltip`;
+
+                // Clear any existing timeout
+                if (tooltip.dataset.hideTimer) {
+                    clearTimeout(Number(tooltip.dataset.hideTimer));
+                }
+
+                // Set new timeout
+                const hideTimer = setTimeout(() => {
+                    tooltip.classList.remove('show');
+                }, duration);
+
+                // Store timer reference
+                tooltip.dataset.hideTimer = hideTimer;
+            } catch (error) {
+                console.error('Error in showTooltip:', error);
+            }
+        };
+
+        // Mobile button connections with error handling
+        const mobileMappings = [
+            { mobile: 'mobile-add-btn', main: 'add-sticker-btn' },
+            { mobile: 'mobile-clone-btn', main: 'clone-sticker-btn' },
+            { mobile: 'mobile-delete-btn', main: 'delete-sticker-btn' },
+            { mobile: 'mobile-undo-btn', main: 'undo-btn' },
+            { mobile: 'mobile-redo-btn', main: 'redo-btn' },
+            { mobile: 'mobile-zoom-in', main: 'zoom-in-btn' },
+            { mobile: 'mobile-zoom-out', main: 'zoom-out-btn' },
+            { mobile: 'mobile-zoom-reset', main: 'zoom-reset-btn' },
+            { mobile: 'mobile-rotate-left', main: 'rotate-left-btn' },
+            { mobile: 'mobile-rotate-right', main: 'rotate-right-btn' }
+        ];
+
+
+
+
+
+
+
+        // Mobile sidebar toggle
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const sidebar = document.getElementById('sidebar');
+
+        if (sidebarToggle && sidebar) {
+            // Toggle functionality
+            sidebarToggle.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const wasVisible = sidebar.classList.contains('show');
+                sidebar.classList.remove('show');
+
+                if (!wasVisible) {
+                    sidebar.classList.add('show');
+                }
+
+                const icon = this.querySelector('i');
+                if (sidebar.classList.contains('show')) {
+                    icon.classList.remove('fa-bars');
+                    icon.classList.add('fa-times');
+                } else {
+                    icon.classList.remove('fa-times');
+                    icon.classList.add('fa-bars');
+                }
+            });
+
+            // Close sidebar when clicking outside
+            document.addEventListener('click', function (event) {
+                if (
+                    sidebar.classList.contains('show') &&
+                    !sidebar.contains(event.target) &&
+                    event.target !== sidebarToggle
+                ) {
+                    sidebar.classList.remove('show');
+                    const icon = sidebarToggle.querySelector('i');
+                    icon.classList.remove('fa-times');
+                    icon.classList.add('fa-bars');
+                }
+            });
+
+            // Responsive handling
+            function handleResponsiveLayout() {
+                const isMobileWidth = window.innerWidth <= 768;
+                sidebarToggle.style.display = isMobileWidth ? 'block' : 'none';
+
+                if (!isMobileWidth) {
+                    sidebar.classList.remove('show');
+                    const icon = sidebarToggle.querySelector('i');
+                    icon.classList.remove('fa-times');
+                    icon.classList.add('fa-bars');
+                }
+            }
+
+            handleResponsiveLayout();
+            window.addEventListener('resize', handleResponsiveLayout);
+        }
+
+
+
+
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+            tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+                new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        });
+
+
+        
+        // Centralized mobile button connection
+        mobileMappings.forEach(mapping => {
+            const mobileBtn = document.getElementById(mapping.mobile);
+            const mainBtn = document.getElementById(mapping.main);
+
+            if (mobileBtn && mainBtn) {
+                mobileBtn.addEventListener('click', function () {
+                    try {
+                        mainBtn.click();
+                    } catch (error) {
+                        console.error(`Error connecting ${mapping.mobile} to ${mapping.main}:`, error);
+                        window.showTooltip(`Failed to activate ${mapping.mobile}`, { type: 'error' });
+                    }
+                });
+            } else {
+                console.warn(`Missing mobile or main button: ${mapping.mobile} or ${mapping.main}`);
+            }
+        });
+
+        // Performance and accessibility monitoring
+        window.addEventListener('error', function (event) {
+            console.error('Unhandled error:', event.error);
+            window.showTooltip('An unexpected error occurred', { type: 'error', duration: 5000 });
+        });
+    });
+</script>
+
+    <!-- Include editor.js -->
+    <script src="{% static 'js/editor1.js' %}"></script>
+
+
+
+</body>
+</html>
