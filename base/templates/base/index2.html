@@ -240,20 +240,33 @@
     <div class="mb-4">
         <div class="d-flex align-items-center mb-3">
             <div class="step-icon">1</div>
-            <h5 class="mb-0">Upload Your Sticker orccc Flyer</h5>
+            <h5 class="mb-0">Upload Image</h5>
         </div>
         
-        <div class="mb-3">
-            <label for="sticker_image" class="form-label">
-                Image <span class="text-danger">*</span>
-            </label>
-            <input type="file" class="form-control" id="sticker_image" name="sticker_image" accept="image/*" required>
-            <div class="form-text">
-                <i class="fas fa-info-circle me-1"></i> 
-                Supported formats: PNG, JPG, GIF, SVG
-            </div>
-        </div>
-        
+
+
+
+
+
+<div class="container mt-5">
+  <div class="p-4 text-center" style="border: 2px dashed #ccc; border-radius: 8px;">
+    <div class="mb-3">
+      <i class="bi bi-upload" style="font-size: 3rem; color: #6c757d;"></i>
+    </div>
+    <h5 class="mb-2">Upload your own design files</h5>
+    <p class="text-muted mb-3">PNG, JPEG, PSD, AI, etc</p>
+
+    <label class="btn btn-danger w-100">
+      Upload
+     <input type="file" id="sticker_image" name="sticker_image" class="d-none" accept="image/*" required>
+    </label>
+  </div>
+</div>
+
+
+
+
+
         <div id="sticker_preview" class="text-center mb-3 d-none">
             <p><small class="text-muted">Preview:</small></p>
             <div class="sticker-preview">
@@ -269,15 +282,8 @@
                     <strong>Detected Dimensions:</strong>
                 </div>
                 <div class="row">
-                    <div class="col-4">
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_mm" value="mm" checked>
-                            <label class="form-check-label" for="unit_mm">
-                                <span id="dim_mm">0 × 0</span> mm
-                            </label>
-                        </div>
-                    </div>
-                    <div class="col-4">
+
+                       <div class="col-6">
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="dimension_unit" id="unit_inches" value="inches">
                             <label class="form-check-label" for="unit_inches">
@@ -285,7 +291,16 @@
                             </label>
                         </div>
                     </div>
-                    <div class="col-4">
+                    <div class="col-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_mm" value="mm" checked>
+                            <label class="form-check-label" for="unit_mm">
+                                <span id="dim_mm">0 × 0</span> mm
+                            </label>
+                        </div>
+                    </div>
+                 
+                    <div class="col-6">
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="dimension_unit" id="unit_pixels" value="pixels">
                             <label class="form-check-label" for="unit_pixels">
@@ -1352,7 +1367,7 @@
 
 
 
-    <!-- Validation error display area at the top of the form -->
+    {% comment %} <!-- Validation error display area at the top of the form -->
 <div id="validation-errors" class="mb-4 {% if not messages %}d-none{% endif %}">
     <div class="alert alert-danger">
         <h6 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>Please check the following issues:</h6>
@@ -1363,6 +1378,9 @@
         </ul>
     </div>
 </div>
+
+
+
 
 <form method="post" action="{% url 'calculate_layout' %}" enctype="multipart/form-data" id="layout-form">
     {% csrf_token %}
@@ -1652,7 +1670,7 @@
             <i class="fas fa-calculator me-2"></i> Calculate & Generate Layout
         </button>
     </div>
-</form>
+</form> {% endcomment %}
 
 
 
