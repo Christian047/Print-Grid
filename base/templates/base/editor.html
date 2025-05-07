@@ -17,7 +17,7 @@
     <style>
         body {
             background-color: #f8f9fa;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-family:"Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
         
         .main-container {
@@ -216,20 +216,82 @@
                 </a>
             </div>
             
-            <!-- Layout name -->
-            <div class="card mb-3">
-                <div class="card-header">
-                    <i class="fas fa-file-alt me-2"></i> Layout Information
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label for="layout-name" class="form-label">Layout Name</label>
-                        <input type="text" class="form-control" id="layout-name" value="{{ layout.name }}">
-                    </div>
-                    
-              
-                </div>
+<!-- Paper Information Section -->
+<div class="card mb-3">
+    <div class="card-header">
+        <i class="fas fa-image me-2"></i> Paper Information
+    </div>
+    <div class="card-body">
+
+        <!-- Original Sticker Image -->
+        <div class="mb-3 text-center">
+            <img src="{{ layout.original_image.url }}" alt="Original Sticker" class="img-fluid rounded"
+                style="max-height: 150px;">
+        </div>
+
+
+            <!-- Stickers Generated -->
+            <div class="mb-2">
+                <strong>Items Generated:</strong> {{ layout.layout_data.total_stickers }} pcs
             </div>
+        <!-- Item Size -->
+        <div class="mb-2">
+            <strong>Item Size:</strong> {{ layout.sticker_width }} × {{ layout.sticker_height }}mm
+        </div>
+
+        <!-- Paper Size -->
+        <div class="mb-2">
+            <strong>Paper Size:</strong> {{ paper_size.name }}
+        </div>
+
+   
+
+        <!-- Grid Layout -->
+        <div class="mb-2">
+            <strong>Grid Layout:</strong> {{ layout.layout_data.stickers_per_row }} × {{layout.layout_data.rows_per_page }}
+        </div>
+
+        <!-- Dimensions -->
+        <div class="mb-2">
+            <strong>Paper Dimensions:</strong> {{ layout.layout_data.paper_width }} × {{layout.layout_data.paper_height}}mm
+        </div>
+
+        <!-- Margins -->
+        <div class="mb-2">
+            <strong>Margins:</strong>
+            T: {{ layout.margin_top }}mm,
+            R: {{ layout.margin_right }}mm,
+            B: {{ layout.margin_bottom }}mm,
+            L: {{ layout.margin_left }}mm
+        </div>
+
+        <!-- Spacing -->
+        <div>
+            <strong>Spacing:</strong>
+            H: {{ layout.layout_data.spacing.horizontal }}mm,
+            V: {{ layout.layout_data.spacing.vertical }}mm
+        </div>
+
+    </div>
+</div>
+
+
+<!-- Download buttons -->
+<div class="d-grid gap-2 mb-4">
+    <button id="save-layout-btn" class="btn btn-primary">
+        <i class="fas fa-save me-2"></i> Save Layout
+    </button>
+    <div class="btn-group">
+        <a href="{% url 'download_layout' layout_id=layout.id %}?format=pdf" class="btn btn-outline-primary"
+            target="_blank">
+            <i class="fas fa-download me-2  me-1"></i> PDF
+        </a>
+        <button id="download-png-btn" class="btn btn-outline-primary">
+            <i class="fas fa-download me-1"></i> PNG
+        </button>
+    </div>
+</div>
+
             
             <!-- Sticker tools -->
             <div class="card mb-3">
@@ -321,80 +383,6 @@
 
 
 
-<!-- Paper Information Section -->
-<div class="card mb-3">
-    <div class="card-header">
-        <i class="fas fa-image me-2"></i> Paper Information
-    </div>
-    <div class="card-body">
-
-        <!-- Original Sticker Image -->
-        <div class="mb-3 text-center">
-            <img src="{{ layout.original_image.url }}" alt="Original Sticker" class="img-fluid rounded"
-                style="max-height: 150px;">
-        </div>
-
-        <!-- Item Size -->
-        <div class="mb-2">
-            <strong>Item Size:</strong> {{ layout.sticker_width }} × {{ layout.sticker_height }}mm
-        </div>
-
-        <!-- Paper Size -->
-        <div class="mb-2">
-            <strong>Paper Size:</strong> {{ paper_size.name }}
-        </div>
-
-        <!-- Stickers Generated -->
-        <div class="mb-2">
-            <strong>Stickers Generated:</strong> {{ layout.layout_data.total_stickers }}
-        </div>
-
-        <!-- Grid Layout -->
-        <div class="mb-2">
-            <strong>Grid Layout:</strong> {{ layout.layout_data.stickers_per_row }} × {{layout.layout_data.rows_per_page }}
-        </div>
-
-        <!-- Dimensions -->
-        <div class="mb-2">
-            <strong>Paper Dimensions:</strong> {{ layout.layout_data.paper_width }} × {{ layout.layout_data.paper_height}}mm
-        </div>
-
-        <!-- Margins -->
-        <div class="mb-2">
-            <strong>Margins:</strong>
-            T: {{ layout.margin_top }}mm,
-            R: {{ layout.margin_right }}mm,
-            B: {{ layout.margin_bottom }}mm,
-            L: {{ layout.margin_left }}mm
-        </div>
-
-        <!-- Spacing -->
-        <div>
-            <strong>Spacing:</strong>
-            H: {{ layout.layout_data.spacing.horizontal }}mm,
-            V: {{ layout.layout_data.spacing.vertical }}mm
-        </div>
-
-    </div>
-</div>
-
-        
-        <!-- Download buttons -->
-        <div class="d-grid gap-2 mb-4">
-            <button id="save-layout-btn" class="btn btn-primary">
-                <i class="fas fa-save me-2"></i> Save Layout
-            </button>
-            <div class="btn-group">
-                <a href="{% url 'download_layout' layout_id=layout.id %}?format=pdf" class="btn btn-outline-primary"
-                    target="_blank">
-                    <i class="fas fa-download me-2  me-1"></i> PDF
-                </a>
-                <button id="download-png-btn" class="btn btn-outline-primary">
-                    <i class="fas fa-download me-1"></i> PNG
-                </button>
-            </div>
-        </div>
-
 
 
 
@@ -445,7 +433,20 @@
             
  
 
-
+            <!-- Layout name -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <i class="fas fa-file-alt me-2"></i> Layout Information
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="layout-name" class="form-label">Layout Name</label>
+                        <input type="text" class="form-control" id="layout-name" value="{{ layout.name }}">
+                    </div>
+            
+            
+                </div>
+            </div>
 
 
         <div class="small text-muted mb-2">Tips:</div>
@@ -492,6 +493,13 @@
                 <i class="fas fa-undo"></i>
             </button>
             <button id="mobile-rotate-right" class="btn btn-light" title="Rotate Right 30°">
+                <i class="fas fa-redo"></i>
+            </button>
+
+            <button id="mobile-undo-btn" class="btn btn-light disabled">
+                <i class="fas fa-undo"></i>
+            </button>
+            <button id="mobile-redo-btn" class="btn btn-light disabled">
                 <i class="fas fa-redo"></i>
             </button>
             

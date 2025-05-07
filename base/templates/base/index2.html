@@ -14,7 +14,8 @@
     <style>
         body {
             background-color: #f8f9fa;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-family:"Poppins" ,-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(to top, #e6e9f0 0%, #eef1f5 100%);
         }
         
         .main-container {
@@ -753,7 +754,19 @@
                                     <strong>Detected Dimensions:</strong>
                                 </div>
                                 <div class="row">
-                                    <div class="col-4">
+
+
+                                                   <div class="col-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_inches" value="inches">
+                                            <label class="form-check-label" for="unit_inches">
+                                                <span id="dim_inches">${data.dimensions.inches.width} × ${data.dimensions.inches.height}</span> inches
+                                            </label>
+                                        </div>
+                                    </div>
+
+
+                                    <div class="col-6">
                                         <div class="form-check">
                                             <input class="form-check-input" type="radio" name="dimension_unit" id="unit_mm" value="mm" checked>
                                             <label class="form-check-label" for="unit_mm">
@@ -761,15 +774,10 @@
                                             </label>
                                         </div>
                                     </div>
-                                    <div class="col-4">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="dimension_unit" id="unit_inches" value="inches">
-                                            <label class="form-check-label" for="unit_inches">
-                                                <span id="dim_inches">${data.dimensions.inches.width} × ${data.dimensions.inches.height}</span> in
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div class="col-4">
+                     
+
+
+                                    <div class="col-6">
                                         <div class="form-check">
                                             <input class="form-check-input" type="radio" name="dimension_unit" id="unit_pixels" value="pixels">
                                             <label class="form-check-label" for="unit_pixels">
@@ -778,11 +786,15 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="mt-2 small text-muted">
-                                    Detected at <span id="dim_dpi">${data.dimensions.dpi.x} × ${data.dimensions.dpi.y}</span> DPI. 
-                                    <button type="button" class="btn btn-link btn-sm p-0" id="use_detected_size">
-                                        <i class="fas fa-magic me-1"></i> Use these dimensions
-                                    </button>
+
+                          <div class="mt-2 small text-muted">
+    Using <span id="dim_dpi">300 × 300</span> DPI. 
+    <button type="button" class="btn btn-link btn-sm p-0" id="use_detected_size">
+        <i class="fas fa-magic me-1"></i> Use these dimensions
+    </button>
+</div>
+
+
                                 </div>
                             </div>
                         `;
@@ -834,26 +846,36 @@
             }
         });
         
-        // Function to apply detected dimensions (extracted to avoid code duplication)
-        function applyDetectedDimensions(data) {
-            const selectedUnit = document.querySelector('input[name="dimension_unit"]:checked').value;
-            const widthInput = document.getElementById('sticker_width');
-            const heightInput = document.getElementById('sticker_height');
-            
-            if (selectedUnit === 'mm') {
-                widthInput.value = data.dimensions.mm.width;
-                heightInput.value = data.dimensions.mm.height;
-            } else if (selectedUnit === 'inches') {
-                // Convert inches to mm for the form
-                widthInput.value = (data.dimensions.inches.width * 25.4).toFixed(2);
-                heightInput.value = (data.dimensions.inches.height * 25.4).toFixed(2);
-            } else if (selectedUnit === 'pixels') {
-                // Convert pixels to mm for the form
-                const dpiX = data.dimensions.dpi.x || 72;
-                const dpiY = data.dimensions.dpi.y || 72;
-                widthInput.value = ((data.dimensions.pixels.width / dpiX) * 25.4).toFixed(2);
-                heightInput.value = ((data.dimensions.pixels.height / dpiY) * 25.4).toFixed(2);
-            }
+
+
+
+function applyDetectedDimensions(data) {
+    const selectedUnit = document.querySelector('input[name="dimension_unit"]:checked').value;
+    const widthInput = document.getElementById('sticker_width');
+    const heightInput = document.getElementById('sticker_height');
+    
+    if (selectedUnit === 'mm') {
+        widthInput.value = data.dimensions.mm.width;
+        heightInput.value = data.dimensions.mm.height;
+    } else if (selectedUnit === 'inches') {
+        // Convert inches to mm for the form
+        widthInput.value = (data.dimensions.inches.width * 25.4).toFixed(2);
+        heightInput.value = (data.dimensions.inches.height * 25.4).toFixed(2);
+    } else if (selectedUnit === 'pixels') {
+        // Convert pixels to mm for the form, ALWAYS using 300 DPI
+        const dpiX = 300; // Force 300 DPI
+        const dpiY = 300; // Force 300 DPI
+        widthInput.value = ((data.dimensions.pixels.width / dpiX) * 25.4).toFixed(2);
+        heightInput.value = ((data.dimensions.pixels.height / dpiY) * 25.4).toFixed(2);
+    }
+
+
+
+
+
+
+
+
             
             // Show tooltip
             window.showTooltip('Dimensions applied!');
@@ -1684,91 +1706,103 @@
 
 
 
-
 <!-- JavaScript updates for validation and slider range -->
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    window.getPaperWidth = function () {
+        const useCustomPaper = document.getElementById('use_custom_paper').checked;
+
+        if (useCustomPaper) {
+            return parseFloat(document.getElementById('custom_paper_width').value);
+        } else {
+            const paperSelect = document.getElementById('paper_size');
+            const selectedOption = paperSelect.options[paperSelect.selectedIndex];
+            return parseFloat(selectedOption.getAttribute('data-width'));
+        }
+    };
+
+    window.getPaperHeight = function () {
+        const useCustomPaper = document.getElementById('use_custom_paper').checked;
+
+        if (useCustomPaper) {
+            return parseFloat(document.getElementById('custom_paper_height').value);
+        } else {
+            const paperSelect = document.getElementById('paper_size');
+            const selectedOption = paperSelect.options[paperSelect.selectedIndex];
+            return parseFloat(selectedOption.getAttribute('data-height'));
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
         // Initialize sliders with appropriate ranges
         updateSliderRanges();
-        
+
         // Function to update slider ranges based on paper size
         function updateSliderRanges() {
             const paperWidth = getPaperWidth();
             const paperHeight = getPaperHeight();
-            
-            // Set max values for sliders to the full paper size, not just half
-            // This fixes the 200mm limitation issue
+
             const widthSlider = document.getElementById('sticker-width-slider');
             const heightSlider = document.getElementById('sticker-height-slider');
-            
+
             if (widthSlider && heightSlider) {
                 widthSlider.max = Math.min(Math.floor(paperWidth), 1000);
                 heightSlider.max = Math.min(Math.floor(paperHeight), 1000);
-                
-                // Update sliders if current value is greater than max
+
                 if (parseFloat(widthSlider.value) > widthSlider.max) {
                     widthSlider.value = widthSlider.max;
                     document.getElementById('width-value').textContent = widthSlider.max;
                     document.getElementById('sticker_width').value = widthSlider.max;
                 }
-                
+
                 if (parseFloat(heightSlider.value) > heightSlider.max) {
                     heightSlider.value = heightSlider.max;
                     document.getElementById('height-value').textContent = heightSlider.max;
                     document.getElementById('sticker_height').value = heightSlider.max;
                 }
             }
-            
-            // Also update the margin slider max value based on paper dimensions
+
             const marginSlider = document.getElementById('margin-slider');
             if (marginSlider) {
-                // Set max margin to 1/4 of the smallest paper dimension
-                marginSlider.max = Math.min(Math.floor(paperWidth / 4), Math.floor(paperHeight / 4));
+                marginSlider.max = Math.min(
+                    Math.floor(paperWidth / 4),
+                    Math.floor(paperHeight / 4)
+                );
             }
         }
-        
-        // Make sure paper size change event listeners update slider ranges
+
         document.getElementById('paper_size').addEventListener('change', updateSliderRanges);
         document.getElementById('paper_orientation').addEventListener('change', updateSliderRanges);
-        
-        // Add custom paper dimension change listeners
         document.getElementById('custom_paper_width').addEventListener('input', updateSliderRanges);
         document.getElementById('custom_paper_height').addEventListener('input', updateSliderRanges);
-        
-        // Make sure toggle custom paper affects the slider ranges
         document.getElementById('use_custom_paper').addEventListener('change', updateSliderRanges);
-        
-        // Add live validation to show warnings in the preview area
+
+        // Live validation
         function updateValidation() {
+            console.log('Starting validation check...');
+
             const previewValidation = document.getElementById('preview-validation-message');
             const calculateBtn = document.getElementById('calculate-btn');
-            
-            // Get current values
+
             const stickerWidth = parseFloat(document.getElementById('sticker_width').value);
             const stickerHeight = parseFloat(document.getElementById('sticker_height').value);
-            
-            // Get paper dimensions
+
             let paperWidth = getPaperWidth();
             let paperHeight = getPaperHeight();
-            
-            // Apply orientation
+
             const orientation = document.getElementById('paper_orientation').value;
             if ((orientation === 'landscape' && paperWidth < paperHeight) ||
                 (orientation === 'portrait' && paperWidth > paperHeight)) {
                 [paperWidth, paperHeight] = [paperHeight, paperWidth];
             }
-            
-            // Get margins
+
             const marginTop = parseFloat(document.getElementById('margin_top').value) || 10;
             const marginRight = parseFloat(document.getElementById('margin_right').value) || 10;
             const marginBottom = parseFloat(document.getElementById('margin_bottom').value) || 10;
             const marginLeft = parseFloat(document.getElementById('margin_left').value) || 10;
-            
-            // Calculate printable area
+
             const printableWidth = paperWidth - marginLeft - marginRight;
             const printableHeight = paperHeight - marginTop - marginBottom;
-            
-            // Validate dimensions
+
             if (stickerWidth > printableWidth || stickerHeight > printableHeight) {
                 previewValidation.textContent = 'Item size is too large for the printable area with these margins.';
                 previewValidation.className = 'alert alert-danger d-block mt-2';
@@ -1778,25 +1812,24 @@
                 previewValidation.className = 'alert alert-danger d-block mt-2';
                 calculateBtn.disabled = true;
             } else {
-                previewValidation.className = 'alert d-none mt-2';
-                calculateBtn.disabled = false;
-                
-                // Add efficiency information
                 const horizontalSpacing = parseFloat(document.getElementById('horizontal_spacing').value) || 2;
                 const verticalSpacing = parseFloat(document.getElementById('vertical_spacing').value) || 2;
-                
-                // Calculate how many stickers fit
+
                 const stickersPerRow = Math.floor(printableWidth / (stickerWidth + horizontalSpacing));
-                const rowsPerPage = Math.floor(printableHeight / (sticker_height + verticalSpacing));
-                
-                if (stickersPerRow > 0 && rowsPerPage > 0) {
-                    // Calculate total stickers and efficiency
+                const rowsPerPage = Math.floor(printableHeight / (stickerHeight + verticalSpacing));
+
+                if (stickersPerRow <= 0 || rowsPerPage <= 0) {
+                    previewValidation.textContent = 'Cannot fit any items on the page with current settings.';
+                    previewValidation.className = 'alert alert-danger d-block mt-2';
+                    calculateBtn.disabled = true;
+                } else {
                     const totalStickers = stickersPerRow * rowsPerPage;
                     const printableArea = printableWidth * printableHeight;
                     const stickerArea = stickerWidth * stickerHeight * totalStickers;
                     const efficiency = (stickerArea / printableArea) * 100;
-                    
-                    // Show efficiency message
+
+                    calculateBtn.disabled = false;
+
                     if (efficiency < 50) {
                         previewValidation.textContent = `Low layout efficiency (${efficiency.toFixed(1)}%). Consider adjusting item size or spacing to reduce waste.`;
                         previewValidation.className = 'alert alert-warning d-block mt-2';
@@ -1809,9 +1842,11 @@
                     }
                 }
             }
+
+            return !calculateBtn.disabled;
         }
-        
-        // Call validation on change of relevant form elements
+
+        // Attach validation to controls
         document.getElementById('sticker-width-slider').addEventListener('input', updateValidation);
         document.getElementById('sticker-height-slider').addEventListener('input', updateValidation);
         document.getElementById('margin-slider').addEventListener('input', updateValidation);
@@ -1821,13 +1856,13 @@
         document.getElementById('use_custom_paper').addEventListener('change', updateValidation);
         document.getElementById('custom_paper_width').addEventListener('input', updateValidation);
         document.getElementById('custom_paper_height').addEventListener('input', updateValidation);
-        
+
         // Initial validation
         updateValidation();
-        
-        // Smooth scroll to validation errors if present
+
+        // Scroll to error if present
         if (document.querySelector('#validation-errors:not(.d-none)')) {
-            document.querySelector('#validation-errors').scrollIntoView({ 
+            document.querySelector('#validation-errors').scrollIntoView({
                 behavior: 'smooth',
                 block: 'start'
             });
@@ -1836,7 +1871,142 @@
 </script>
 
 
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+            const layoutForm = document.getElementById('layout-form');
 
+            if (layoutForm) {
+                // First create the button
+                const submitBtnContainer = document.createElement('div');
+                submitBtnContainer.className = 'mt-3';
+                submitBtnContainer.innerHTML = `
+            <button type="button" id="direct-submit-btn" class="btn btn-sm btn-warning">
+                Debug: Direct Submit (Bypass JS)
+            </button>
+        `;
+
+                // Add the button to the form
+                layoutForm.appendChild(submitBtnContainer);
+
+                // Then add the event listener to the newly created button
+                const directSubmitBtn = document.getElementById('direct-submit-btn');
+                if (directSubmitBtn) {
+                    directSubmitBtn.addEventListener('click', function () {
+                        console.group('Direct Submit Validation');
+                        console.log('Direct submit clicked at:', new Date().toISOString());
+
+                        try {
+                            // Log validation state
+                            console.log('Starting validation checks...');
+
+                            // Check dimensions
+                            const stickerWidth = parseFloat(document.getElementById('sticker_width').value);
+                            const stickerHeight = parseFloat(document.getElementById('sticker_height').value);
+                            console.log('Dimensions check:', {
+                                width: stickerWidth,
+                                height: stickerHeight,
+                                rawWidth: document.getElementById('sticker_width').value,
+                                rawHeight: document.getElementById('sticker_height').value
+                            });
+
+                            if (isNaN(stickerWidth) || isNaN(stickerHeight) || stickerWidth <= 0 || stickerHeight <= 0) {
+                                console.error('Dimension validation failed:', { width: stickerWidth, height: stickerHeight });
+                                alert('Please enter valid sticker dimensions (greater than zero).');
+                                console.groupEnd();
+                                return;
+                            }
+
+                            // Check file input
+                            const fileInput = document.getElementById('sticker_image');
+                            console.log('File input check:', {
+                                element: fileInput,
+                                files: fileInput ? fileInput.files : null,
+                                hasFiles: fileInput && fileInput.files && fileInput.files.length > 0
+                            });
+
+                            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+                                console.error('File input validation failed');
+                                alert('Please select an image file.');
+                                console.groupEnd();
+                                return;
+                            }
+
+                            // Check paper dimensions
+                            let paperWidth, paperHeight;
+                            try {
+                                paperWidth = window.getPaperWidth();
+                                paperHeight = window.getPaperHeight();
+                                console.log('Paper dimensions check:', { width: paperWidth, height: paperHeight });
+                            } catch (error) {
+                                console.error('Error getting paper dimensions:', error);
+                                paperWidth = NaN;
+                                paperHeight = NaN;
+                            }
+
+                            if (isNaN(paperWidth) || isNaN(paperHeight) || paperWidth <= 0 || paperHeight <= 0) {
+                                console.error('Paper dimensions validation failed:', { width: paperWidth, height: paperHeight });
+                                alert('Please ensure paper dimensions are valid.');
+                                console.groupEnd();
+                                return;
+                            }
+
+                            // Check margins
+                            const marginTop = parseFloat(document.getElementById('margin_top').value) || 10;
+                            const marginRight = parseFloat(document.getElementById('margin_right').value) || 10;
+                            const marginBottom = parseFloat(document.getElementById('margin_bottom').value) || 10;
+                            const marginLeft = parseFloat(document.getElementById('margin_left').value) || 10;
+
+                            console.log('Margins check:', { top: marginTop, right: marginRight, bottom: marginBottom, left: marginLeft });
+
+                            // Basic printable area check
+                            const printableWidth = paperWidth - marginLeft - marginRight;
+                            const printableHeight = paperHeight - marginTop - marginBottom;
+
+                            console.log('Printable area check:', { width: printableWidth, height: printableHeight });
+
+                            if (printableWidth <= 0 || printableHeight <= 0) {
+                                console.error('Printable area validation failed:', { width: printableWidth, height: printableHeight });
+                                alert('Margins are too large for the selected paper size.');
+                                console.groupEnd();
+                                return;
+                            }
+
+                            if (stickerWidth > printableWidth || stickerHeight > printableHeight) {
+                                console.error('Sticker too large for printable area:', {
+                                    sticker: { width: stickerWidth, height: stickerHeight },
+                                    printable: { width: printableWidth, height: printableHeight }
+                                });
+                                alert('Sticker is too large for the printable area with current margins.');
+                                console.groupEnd();
+                                return;
+                            }
+
+                            // All validations passed
+                            console.log('All validations passed successfully!');
+                            console.log('Submitting form...');
+                            console.groupEnd();
+
+                            // Show loading indicator
+                            window.showLoading('Processing layout...');
+
+                            // Submit the form
+                            layoutForm.submit();
+
+                        } catch (error) {
+                            console.error('Error during direct submit validation:', error);
+                            console.error('Stack trace:', error.stack);
+                            console.groupEnd();
+                            alert('Error validating form: ' + error.message);
+                        }
+                    });
+                } else {
+                    console.error('Could not find direct-submit-btn after creating it');
+                }
+            } else {
+                console.error('Layout form not found in DOM');
+            }
+        });
+</script>
 
 
 </body>
