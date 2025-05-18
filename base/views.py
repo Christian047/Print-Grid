@@ -67,68 +67,48 @@ def index(request):
 @csrf_exempt
 def detect_sticker_size(request):
     """API endpoint to detect sticker dimensions from uploaded image"""
-    logger.info("Starting detect_sticker_size function")
-    
-    
     
     if request.method != 'POST':
-        logger.error("Non-POST request to detect_sticker_size")
-        return JsonResponse({'success': False, 'error': 'Only POST requests are supported'}, status=405)
+        return JsonResponse({'success': False}, status=405)
     
     if not request.FILES.get('sticker_image'):
-        logger.error("No image file in the request")
-        return JsonResponse({'success': False, 'error': 'No image uploaded'}, status=400)
+        return JsonResponse({'success': False}, status=400)
     
     try:
-        logger.info("Processing uploaded image")
         sticker_image = request.FILES['sticker_image']
-        logger.info(f"Image name: {sticker_image.name}, Size: {sticker_image.size} bytes")
-        
-        
         
         # Open and analyze image
         img = Image.open(sticker_image)
         width_px, height_px = img.size
-        logger.info(f"Image opened successfully. Pixel dimensions: {width_px}×{height_px}")
-        logger.info(f"Image mode: {img.mode}, Format: {img.format}")
         
         # Get image DPI
         dpi_x, dpi_y = 300, 300  # Default DPI
         if 'dpi' in img.info:
             original_dpi = img.info['dpi']
-            logger.info(f"Original DPI from image: {original_dpi}")
             dpi_x, dpi_y = original_dpi
             # Convert fractions to floats
             dpi_x = float(dpi_x)
             dpi_y = float(dpi_y)
-        else:
-            logger.info(f"No DPI info in image. Using default: {dpi_x}×{dpi_y}")
         
         # Calculate physical dimensions
         width_mm = (width_px / dpi_x) * 25.4
         height_mm = (height_px / dpi_y) * 25.4
-        logger.info(f"Calculated millimeter dimensions: {width_mm:.2f}×{height_mm:.2f}mm")
         
         width_inch = width_px / dpi_x
         height_inch = height_px / dpi_y
-        logger.info(f"Calculated inch dimensions: {width_inch:.2f}×{height_inch:.2f}in")
         
         # Get color mode
         color_mode = img.mode
-        logger.info(f"Image color mode: {color_mode}")
         
         # Generate thumbnail
-        logger.info("Generating thumbnail")
         img.thumbnail((150, 150))
         buffered = io.BytesIO()
         img.save(buffered, format="PNG")
         thumbnail = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        logger.info(f"Thumbnail generated, base64 length: {len(thumbnail)}")
         
         # Calculate safe printing size
         safe_width_mm = width_mm * 0.95
         safe_height_mm = height_mm * 0.95
-        logger.info(f"Safe printing dimensions: {safe_width_mm:.2f}×{safe_height_mm:.2f}mm")
         
         # Prepare response
         response_data = {
@@ -158,15 +138,11 @@ def detect_sticker_size(request):
             'color_mode': color_mode,
             'thumbnail': thumbnail
         }
-        logger.info("Dimension detection completed successfully")
-        logger.debug(f"Response data: {response_data['dimensions']}")
         
         return JsonResponse(response_data)
     
     except Exception as e:
-        logger.error(f"Error detecting sticker size: {str(e)}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        return JsonResponse({'success': False}, status=400)
 
 
 
@@ -175,42 +151,29 @@ def detect_sticker_size(request):
 
 
 
-# logger = logging.getLogger(__name__)
-logger = logging.getLogger('app')
 def calculate_layout(request):
     """Enhanced layout calculation with comprehensive error handling"""
-    logger.info("Starting layout calculation process")
     
     if request.method != "POST":
-        logger.warning("Non-POST request to calculate_layout")
         return redirect('index')
     
     try:
-        # Log all the input parameters to see what's coming in
-        logger.debug(f"Input parameters: {request.POST}")
-        
         # Check sticker dimensions and log them
         sticker_width = float(request.POST.get('sticker_width', 0))
         sticker_height = float(request.POST.get('sticker_height', 0))
-        logger.info(f"Sticker dimensions: {sticker_width}mm x {sticker_height}mm")
         
         # Early validation - check if dimensions are valid
         if sticker_width <= 0 or sticker_height <= 0:
-            error_msg = f"Invalid sticker dimensions: {sticker_width}mm x {sticker_height}mm"
-            logger.error(error_msg)
-            messages.error(request, error_msg)
             return redirect('index')
             
         # Get paper dimensions
         use_custom_paper = request.POST.get('use_custom_paper', 'false') == 'true'
-        logger.info(f"Custom paper size: {use_custom_paper}")
         
         if use_custom_paper:
             # Create custom paper size
             paper_width = float(request.POST.get('custom_paper_width'))
             paper_height = float(request.POST.get('custom_paper_height'))
             paper_name = f"Custom {paper_width}x{paper_height}mm"
-            logger.info(f"Custom paper: {paper_name}")
             
             # Create or get the custom paper size
             paper_size, created = PaperSize.objects.get_or_create(
@@ -224,71 +187,52 @@ def calculate_layout(request):
             # Use standard paper size
             paper_size_id = request.POST.get('paper_size')
             paper_size = PaperSize.objects.get(id=paper_size_id)
-            logger.info(f"Standard paper: {paper_size.name} ({paper_size.width_mm}mm x {paper_size.height_mm}mm)")
             
             paper_width = paper_size.width_mm
             paper_height = paper_size.height_mm
         
         # Get orientation and adjust dimensions if needed
         orientation = request.POST.get('paper_orientation', 'portrait')
-        logger.info(f"Paper orientation: {orientation}")
         
         if orientation == 'landscape' and paper_width < paper_height:
             paper_width, paper_height = paper_height, paper_width
-            logger.info(f"After orientation adjustment: {paper_width}mm x {paper_height}mm")
         
         # Get margins (in mm)
         margin_top = float(request.POST.get('margin_top', 10))
         margin_right = float(request.POST.get('margin_right', 10))
         margin_bottom = float(request.POST.get('margin_bottom', 10))
         margin_left = float(request.POST.get('margin_left', 10))
-        logger.info(f"Margins: top={margin_top}mm, right={margin_right}mm, bottom={margin_bottom}mm, left={margin_left}mm")
         
         # Get spacing between stickers (in mm)
         horizontal_spacing = float(request.POST.get('horizontal_spacing', 2))
         vertical_spacing = float(request.POST.get('vertical_spacing', 2))
-        logger.info(f"Spacing: horizontal={horizontal_spacing}mm, vertical={vertical_spacing}mm")
         
         # Calculate printable area dimensions
         printable_width = paper_width - margin_left - margin_right
         printable_height = paper_height - margin_top - margin_bottom
-        logger.info(f"Printable area: {printable_width}mm x {printable_height}mm")
         
         # Early validation - check if sticker can fit in printable area
         if sticker_width > printable_width or sticker_height > printable_height:
-            error_msg = f"Sticker dimensions ({sticker_width}mm x {sticker_height}mm) exceed printable area ({printable_width}mm x {printable_height}mm)"
-            logger.error(error_msg)
-            messages.error(request, error_msg)
             return redirect('index')
         
         # Calculate how many stickers can fit horizontally and vertically
         stickers_per_row = math.floor(printable_width / (sticker_width + horizontal_spacing))
         rows_per_page = math.floor(printable_height / (sticker_height + vertical_spacing))
-        logger.info(f"Stickers per row: {stickers_per_row}, Rows per page: {rows_per_page}")
         
         # Early validation - check if at least one sticker can fit
         if stickers_per_row <= 0 or rows_per_page <= 0:
-            error_msg = f"Cannot fit any stickers with these dimensions and margins"
-            logger.error(error_msg)
-            messages.error(request, error_msg)
             return redirect('index')
         
         # Calculate total stickers per page
         total_stickers = stickers_per_row * rows_per_page
-        logger.info(f"Total stickers per page: {total_stickers}")
         
         # Process the uploaded image
         sticker_image = request.FILES.get('sticker_image')
         if not sticker_image:
-            error_msg = "No sticker image was uploaded."
-            logger.error(error_msg)
-            messages.error(request, error_msg)
             return redirect('index')
         
         # Get the color mode preference if available
         color_mode_preference = request.POST.get('color_mode', 'original')
-        
-    
         
         # Create layout record
         try:
@@ -305,10 +249,7 @@ def calculate_layout(request):
                 vertical_spacing=vertical_spacing,
                 original_image=sticker_image
             )
-            logger.info(f"Layout created with ID {layout.id}")
-        except Exception as create_error:
-            logger.error(f"Layout creation failed: {create_error}")
-            messages.error(request, f"Failed to create layout: {create_error}")
+        except Exception:
             return redirect('index')
         
         # Generate positions for all stickers
@@ -353,7 +294,6 @@ def calculate_layout(request):
         # Store the layout data
         layout.layout_data = layout_data
         layout.save()
-        logger.info(f"Layout data saved for layout {layout.id}")
         
         # Process the image for base64
         try:
@@ -371,9 +311,7 @@ def calculate_layout(request):
                                 rgb_profile = ImageCms.createProfile("sRGB")
                                 cmyk_profile = ImageCms.createProfile("USWebCoatedSWOP")
                                 img = ImageCms.profileToProfile(img, rgb_profile, cmyk_profile, outputMode='CMYK')
-                                logger.info("Converted image from RGB to CMYK")
-                            except Exception as e:
-                                logger.error(f"Error converting to CMYK: {str(e)}")
+                            except Exception:
                                 # Fallback to simple conversion
                                 img = img.convert('CMYK')
                     elif color_mode_preference == 'RGB' and original_color_mode != 'RGB':
@@ -383,9 +321,7 @@ def calculate_layout(request):
                                 cmyk_profile = ImageCms.createProfile("USWebCoatedSWOP")
                                 rgb_profile = ImageCms.createProfile("sRGB")
                                 img = ImageCms.profileToProfile(img, cmyk_profile, rgb_profile, outputMode='RGB')
-                                logger.info("Converted image from CMYK to RGB")
-                            except Exception as e:
-                                logger.error(f"Error converting to RGB: {str(e)}")
+                            except Exception:
                                 # Fallback to simple conversion
                                 img = img.convert('RGB')
                 
@@ -393,10 +329,7 @@ def calculate_layout(request):
                 buffer = io.BytesIO()
                 img.save(buffer, format="PNG")
                 image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-                logger.info(f"Image converted to base64, length: {len(image_base64)}")
-        except Exception as image_error:
-            logger.error(f"Image processing failed: {str(image_error)}")
-            messages.error(request, "Failed to process image")
+        except Exception:
             return redirect('index')
         
         # Render template with context
@@ -408,17 +341,11 @@ def calculate_layout(request):
             'color_mode': color_mode_preference
         }
         
-        logger.info("Rendering editor template with context")
         return render(request, 'base/editor.html', context)
     
-    except Exception as global_error:
+    except Exception:
         # Catch-all error handling
-        logger.error(f"Unhandled error in layout calculation: {global_error}")
-        logger.error(traceback.format_exc())
-        messages.error(request, f"An unexpected error occurred: {global_error}")
         return redirect('index')
-
-
 
 
 
