@@ -1,0 +1,51 @@
+<div class="design-row card mb-3" data-row>
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <strong class="row-title">Design</strong>
+      <button type="button" class="btn btn-sm btn-outline-danger remove-row d-none" title="Remove this design">
+        <i class="fas fa-trash"></i>
+      </button>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3 text-center">
+        <img class="thumb {% if not f.initial.thumb_url %}d-none{% endif %} rounded border mb-2"
+             src="{{ f.initial.thumb_url|default:'' }}" alt="">
+        <label class="btn btn-outline-primary btn-sm w-100 mb-1">
+          <i class="fas fa-upload me-1"></i> {% if f.initial.thumb_url %}Replace image{% else %}Choose image{% endif %}
+          {{ f.image }}
+        </label>
+        {% if f.initial.thumb_url %}<div class="form-text">Optional - leave blank to keep this artwork.</div>{% endif %}
+        <div class="small text-muted file-name"></div>
+      </div>
+      <div class="col-md-9">
+        <div class="row g-2">
+          <div class="col-12">
+            <label class="form-label small mb-0" for="{{ f.name.id_for_label }}">{{ f.name.label }}</label>
+            {{ f.name }}
+          </div>
+          <div class="col-4">
+            <label class="form-label small mb-0" for="{{ f.width_mm.id_for_label }}">{{ f.width_mm.label }} <span class="unit-suffix text-muted"></span></label>
+            {{ f.width_mm }}
+          </div>
+          <div class="col-4">
+            <label class="form-label small mb-0" for="{{ f.height_mm.id_for_label }}">{{ f.height_mm.label }} <span class="unit-suffix text-muted"></span></label>
+            {{ f.height_mm }}
+          </div>
+          <div class="col-4">
+            <label class="form-label small mb-0" for="{{ f.quantity.id_for_label }}">{{ f.quantity.label }}</label>
+            {{ f.quantity }}
+          </div>
+        </div>
+        <div class="form-check mt-2">
+          <input class="form-check-input lock" type="checkbox" checked>
+          <label class="form-check-label small">Keep proportions when I change width or height</label>
+        </div>
+        {{ f.px_w }}{{ f.px_h }}{{ f.design_id }}
+        <div class="small text-muted detect-msg mt-1"></div>
+        {% for name, errs in f.errors.items %}{% for e in errs %}
+          <div class="small text-danger">{{ name }}: {{ e }}</div>
+        {% endfor %}{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>

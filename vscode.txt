@@ -1,1 +1,0 @@
-Enable word wrap in settings

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+{% load static %}
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrintGrid</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+  <style>
+    :root { --pg-green:#1CAA53; --pg-orange:#E27132; }
+    body { background:#eef1f5; font-family:"Poppins",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; }
+    .card { border:none; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.08); }
+    .btn-primary { background:var(--pg-orange); border-color:var(--pg-orange); }
+    .btn-primary:hover { background:#d45c20; border-color:#d45c20; }
+    .btn-outline-primary { color:var(--pg-green); border-color:var(--pg-green); }
+    .btn-outline-primary:hover { background:var(--pg-green); border-color:var(--pg-green); }
+    .form-check-input:checked { background-color:var(--pg-green); border-color:var(--pg-green); }
+    .step { width:34px; height:34px; border-radius:50%; background:var(--pg-green); color:#fff;
+            display:inline-flex; align-items:center; justify-content:center; font-weight:700; margin-right:10px; }
+    .thumb { max-height:90px; max-width:100%; }
+    #quote-box { position:sticky; top:12px; }
+    #overlay { position:fixed; inset:0; background:rgba(255,255,255,.85); display:none; z-index:2000;
+               align-items:center; justify-content:center; flex-direction:column; }
+    #overlay.on { display:flex; }
+  </style>
+</head>
+<body>
+<header class="bg-white shadow-sm">
+  <div class="container py-3 d-flex justify-content-between align-items-center" style="max-width:1100px">
+    <h1 class="h4 mb-0"><i class="fas fa-th me-2" style="color:var(--pg-green)"></i>PrintGrid</h1>
+    <div class="dropdown">
+      <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Measurement unit">
+        <i class="fas fa-cog"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end" id="unit-menu">
+        <li><h6 class="dropdown-header">Measurements</h6></li>
+        <li><button type="button" class="dropdown-item" data-unit="in">Inches</button></li>
+        <li><button type="button" class="dropdown-item" data-unit="cm">Centimeters</button></li>
+        <li><button type="button" class="dropdown-item" data-unit="mm">Millimeters</button></li>
+      </ul>
+    </div>
+  </div>
+</header>
+
+<main class="container py-4" style="max-width:1100px">
+  {% if edit_job %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="h5 mb-0"><i class="fas fa-pen me-2 text-muted"></i>Editing "{{ edit_job.name }}"</h2>
+      <a href="{% url 'result' token=edit_job.token %}" class="small text-muted"><i class="fas fa-times me-1"></i>Cancel</a>
+    </div>
+  {% endif %}
+  {% if errors %}
+  <div class="alert alert-danger">
+    <strong><i class="fas fa-exclamation-triangle me-2"></i>Please fix the following:</strong>
+    <ul class="mb-0 mt-1">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    <div class="small mt-2">Any NEW images you chose could not be kept; please choose them again. Designs already saved to this job keep their artwork.</div>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{% if edit_job %}{% url 'job_edit' token=edit_job.token %}{% else %}{% url 'calculate_layout' %}{% endif %}" enctype="multipart/form-data" id="job-form">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <div class="row g-4">
+      <div class="col-lg-8">
+
+        <div class="card mb-4"><div class="card-body">
+          <h5 class="mb-3"><span class="step">1</span>Sheet</h5>
+          <div class="row g-3">
+            <div class="col-md-6" id="standard-paper">
+              <label class="form-label" for="{{ form.paper_size.id_for_label }}">{{ form.paper_size.label }}</label>
+              <select name="paper_size" id="{{ form.paper_size.id_for_label }}" class="form-select">
+                {% for s in paper_sizes %}
+                <option value="{{ s.id }}" data-name="{{ s.name }}" data-w-mm="{{ s.width_mm }}" data-h-mm="{{ s.height_mm }}"
+                        {% if form.paper_size.value|stringformat:"s" == s.id|stringformat:"s" %}selected{% elif not form.is_bound and s.name == "A4" %}selected{% endif %}>
+                  {{ s.name }} ({{ s.width_mm|floatformat:"-1" }} × {{ s.height_mm|floatformat:"-1" }} mm)
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="{{ form.paper_orientation.id_for_label }}">{{ form.paper_orientation.label }}</label>
+              {{ form.paper_orientation }}
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                {{ form.use_custom_paper }}
+                <label class="form-check-label" for="{{ form.use_custom_paper.id_for_label }}">{{ form.use_custom_paper.label }}</label>
+              </div>
+            </div>
+            <div class="col-md-6 custom-paper d-none">
+              <label class="form-label" for="{{ form.custom_paper_width.id_for_label }}">{{ form.custom_paper_width.label }} <span class="unit-suffix text-muted"></span></label>
+              {{ form.custom_paper_width }}
+            </div>
+            <div class="col-md-6 custom-paper d-none">
+              <label class="form-label" for="{{ form.custom_paper_height.id_for_label }}">{{ form.custom_paper_height.label }} <span class="unit-suffix text-muted"></span></label>
+              {{ form.custom_paper_height }}
+            </div>
+          </div>
+
+          <details class="mt-3">
+            <summary class="text-muted">Margins and spacing (your shop's usual values are filled in)</summary>
+            <div class="row g-2 mt-1">
+              {% for fld in form %}{% if fld.name == "margin_top" or fld.name == "margin_right" or fld.name == "margin_bottom" or fld.name == "margin_left" or fld.name == "horizontal_spacing" or fld.name == "vertical_spacing" %}
+              <div class="col-6 col-md-4"><label class="form-label small mb-0" for="{{ fld.id_for_label }}">{{ fld.label }} <span class="unit-suffix text-muted"></span></label>{{ fld }}</div>
+              {% endif %}{% endfor %}
+              <div class="col-12 mt-2">
+                <div class="form-check">{{ form.allow_rotation }}<label class="form-check-label" for="{{ form.allow_rotation.id_for_label }}">{{ form.allow_rotation.label }}</label></div>
+                <div class="form-check">{{ form.group_by_design }}<label class="form-check-label" for="{{ form.group_by_design.id_for_label }}">{{ form.group_by_design.label }}</label></div>
+              </div>
+            </div>
+          </details>
+        </div></div>
+
+        <div class="card mb-4"><div class="card-body">
+          <h5 class="mb-3"><span class="step">2</span>Your stickers</h5>
+          <div id="design-rows">
+            {% for f in formset %}{% include "base/_design_row.html" with f=f %}{% endfor %}
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="add-row">
+            <i class="fas fa-plus me-1"></i> Add another design
+          </button>
+          <div class="small text-muted mt-2">PNG, JPG, WEBP, TIFF, GIF or BMP, up to {{ max_upload_mb }} MB each.</div>
+        </div></div>
+
+        <div class="card mb-4"><div class="card-body">
+          <h5 class="mb-3"><span class="step">3</span>Job name <span class="small text-muted">(optional)</span></h5>
+          {{ form.layout_name }}
+        </div></div>
+
+        <button type="submit" class="btn btn-primary btn-lg w-100">
+          <i class="fas fa-calculator me-2"></i>{% if edit_job %}Save changes{% else %}Calculate layout{% endif %}</button>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card" id="quote-box"><div class="card-body">
+          <h6 class="mb-3"><i class="fas fa-bolt me-2" style="color:var(--pg-orange)"></i>Live numbers</h6>
+          <div id="quote-body" class="text-muted small">Add your sticker size and quantity to see how many sheets you need.</div>
+        </div></div>
+
+        {% if recent_jobs %}
+        <div class="card mt-4"><div class="card-body">
+          <h6 class="mb-2"><i class="fas fa-history me-2"></i>Your recent jobs</h6>
+          {% for j in recent_jobs %}
+            <a class="d-block small py-1" href="{% url 'result' token=j.token %}">{{ j.name }}
+              <span class="text-muted">— {{ j.sheet_count|default:"?" }} sheets, {{ j.created_at|date:"M d" }}</span></a>
+          {% endfor %}
+        </div></div>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+</main>
+
+<template id="row-template">{% include "base/_design_row.html" with f=formset.empty_form %}</template>
+<div id="overlay"><div class="spinner-border text-success mb-3"></div><div>Calculating your layout…</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{% static 'js/units.js' %}"></script>
+<script>
+(function () {
+  const form = document.getElementById('job-form');
+  const rowsEl = document.getElementById('design-rows');
+  const total = document.getElementById('id_designs-TOTAL_FORMS');
+  const tpl = document.getElementById('row-template').innerHTML;
+  const csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
+  const DETECT_URL = "{% url 'detect_sticker_size' %}", QUOTE_URL = "{% url 'quote' %}";
+  const HAS_SERVER_ERRORS = {{ errors|yesno:"true,false" }};
+  const DRAFT_KEY = 'printgrid-draft-v1:{{ edit_job.token|default:"new" }}';
+  const $ = (row, sel) => row.querySelector(sel);
+  let timer = null, quoteSeq = 0;
+
+  // ---- Remember what the customer typed, so the Back button doesn't lose it.
+  // (Browsers never let a page refill a file input, so the image itself can't
+  // be restored this way; the customer is told to choose it again.)
+  function saveDraft() {
+    try {
+      const rows = [...rowsEl.querySelectorAll('[data-row]')].map(row => {
+        const w = row.querySelector('[name$="-width_mm"]'), h = row.querySelector('[name$="-height_mm"]');
+        return {
+          name: row.querySelector('[name$="-name"]').value,
+          width_mm: w.dataset.mm || '', height_mm: h.dataset.mm || '',   // canonical mm, not the displayed unit
+          quantity: row.querySelector('[name$="-quantity"]').value,
+          px_w: row.querySelector('[name$="-px_w"]').value,
+          px_h: row.querySelector('[name$="-px_h"]').value,
+          design_id: row.querySelector('[name$="-design_id"]').value,
+          ratio: row.dataset.ratio || '',
+          fileName: $(row, '.file-name').textContent,
+          lock: $(row, '.lock').checked,
+        };
+      });
+      const job = {};
+      form.querySelectorAll('[name]').forEach(el => {
+        if (el.name.startsWith('designs-') || el.name === 'csrfmiddlewaretoken') return;
+        if (el.classList.contains('len-field')) job[el.name] = el.dataset.mm || '';
+        else job[el.name] = (el.type === 'checkbox') ? el.checked : el.value;
+      });
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ job, rows }));
+    } catch (e) { /* private browsing or storage disabled: nothing to do */ }
+  }
+
+  function restoreDraft() {
+    let draft;
+    try { draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) { return; }
+    if (!draft || !draft.rows || !draft.rows.length) return;
+    const unit = PGUnits.getUnit();
+
+    Object.entries(draft.job || {}).forEach(([name, val]) => {
+      const el = form.querySelector(`[name="${name}"]`);
+      if (!el) return;
+      if (el.type === 'checkbox') { el.checked = val; return; }
+      if (el.classList.contains('len-field')) { el.dataset.mm = val; PGUnits.displayField(el, unit); }
+      else el.value = val;
+    });
+
+    // Reconcile by design_id, not by row count: the server always renders every
+    // design currently saved on the job, but the draft may reflect a row the
+    // customer had already removed (or added) before navigating away without
+    // submitting. A count-only trim/pad would delete or duplicate the wrong row.
+    // Rows with NO design_id (a plain new job, or a not-yet-saved addition)
+    // have no identity to match on, so they're reused by POSITION instead,
+    // from the pool of blank/unlinked rows already in the DOM - this is what
+    // keeps a fresh create-page's single starter row from being duplicated.
+    const byDesignId = new Map();
+    rowsEl.querySelectorAll('[data-row]').forEach(row => {
+      const did = row.querySelector('[name$="-design_id"]').value;
+      if (did) byDesignId.set(did, row);
+    });
+    const wantedIds = new Set(draft.rows.map(r => r.design_id).filter(Boolean));
+    rowsEl.querySelectorAll('[data-row]').forEach(row => {
+      const did = row.querySelector('[name$="-design_id"]').value;
+      if (did && !wantedIds.has(did)) row.remove();   // removed by the customer, not resurrected
+    });
+    const unlinkedPool = [...rowsEl.querySelectorAll('[data-row]')].filter(
+      row => !row.querySelector('[name$="-design_id"]').value);
+    let poolIdx = 0;
+
+    draft.rows.forEach(r => {
+      let row = r.design_id ? byDesignId.get(r.design_id) : null;
+      if (row) {
+        rowsEl.appendChild(row);                          // reuse it (keeps its real thumbnail), in draft order
+      } else if (poolIdx < unlinkedPool.length) {
+        row = unlinkedPool[poolIdx++];
+        rowsEl.appendChild(row);                          // reuse an existing blank row rather than duplicate it
+      } else {
+        rowsEl.insertAdjacentHTML('beforeend', tpl);       // a genuinely new, not-yet-saved row
+        row = rowsEl.lastElementChild;
+      }
+      const w = row.querySelector('[name$="-width_mm"]'), h = row.querySelector('[name$="-height_mm"]');
+      row.querySelector('[name$="-name"]').value = r.name || '';
+      w.dataset.mm = r.width_mm || ''; PGUnits.displayField(w, unit);
+      h.dataset.mm = r.height_mm || ''; PGUnits.displayField(h, unit);
+      row.querySelector('[name$="-quantity"]').value = r.quantity || '';
+      row.querySelector('[name$="-px_w"]').value = r.px_w || '';
+      row.querySelector('[name$="-px_h"]').value = r.px_h || '';
+      if (r.ratio) row.dataset.ratio = r.ratio;
+      $(row, '.lock').checked = r.lock !== false;
+      if (r.fileName && !r.design_id) {
+        $(row, '.file-name').textContent = r.fileName;
+        const msg = $(row, '.detect-msg');
+        msg.className = 'small text-warning detect-msg mt-1';
+        msg.textContent = 'Please choose "' + r.fileName + '" again — browsers don\'t keep images after navigating back.';
+      }
+    });
+    for (; poolIdx < unlinkedPool.length; poolIdx++) unlinkedPool[poolIdx].remove();   // the draft needed fewer blank rows than existed
+    renumber();
+  }
+
+  function renumber() {
+    const rows = [...rowsEl.querySelectorAll('[data-row]')];
+    rows.forEach((row, i) => {
+      row.querySelectorAll('[name],[id],[for]').forEach(el => {
+        ['name', 'id', 'for'].forEach(a => {
+          if (el.hasAttribute(a)) el.setAttribute(a, el.getAttribute(a).replace(/designs-(\d+|__prefix__)-/, 'designs-' + i + '-'));
+        });
+      });
+      $(row, '.row-title').textContent = 'Design ' + (i + 1);
+      $(row, '.remove-row').classList.toggle('d-none', rows.length === 1);
+    });
+    total.value = rows.length;
+  }
+
+  function scheduleQuote() { saveDraft(); clearTimeout(timer); timer = setTimeout(getQuote, 400); }
+
+  function formParams() {
+    const p = new URLSearchParams();
+    for (const el of form.elements) {
+      if (!el.name || el.type === 'file' || el.disabled) continue;
+      if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) continue;
+      const val = el.classList.contains('len-field') ? (el.dataset.mm || '') : el.value;
+      p.append(el.name, val);
+    }
+    return p;
+  }
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function suggestionLine(s, unit) {
+    const w = PGUnits.formatMm(s.sticker_w, unit), h = PGUnits.formatMm(s.sticker_h, unit), suf = PGUnits.suffix(unit);
+    let msg;
+    if (s.kind === 'shrink') {
+      msg = 'Reduce to ' + w + ' × ' + h + ' ' + suf + ' to fit ' + s.per_sheet + ' per sheet';
+      msg += (s.sheets !== null) ? (', saving ' + s.sheets_saved + ' sheet' + (s.sheets_saved === 1 ? '' : 's') + '.') : '.';
+    } else {
+      msg = 'You can enlarge up to ' + w + ' × ' + h + ' ' + suf + ' and still fit ' + s.per_sheet + ' per sheet';
+      msg += (s.sheets !== null) ? (' (' + s.sheets + ' sheet' + (s.sheets === 1 ? '' : 's') + ').') : '.';
+    }
+    if (s.low_resolution) msg += ' Warning: at this size the artwork would print at about ' + Math.round(s.dpi) + ' DPI.';
+    return msg;
+  }
+
+  let lastQuote = null;
+  function renderQuote(d) {
+    const box = document.getElementById('quote-body');
+    if (!d || !d.ok) {
+      box.className = 'text-muted small';
+      box.textContent = (d && d.errors && d.errors.length) ? d.errors[0] : 'Fill in the size and quantity.';
+      return;
+    }
+    const unit = PGUnits.getUnit(), suf = PGUnits.suffix(unit);
+    const fmt = mm => PGUnits.formatMm(mm, unit);
+    let h = '<div class="display-6 fw-bold" style="color:var(--pg-green)">' + d.sheets + ' sheet' + (d.sheets === 1 ? '' : 's') + '</div>' +
+      '<div>' + d.total_stickers + ' stickers · ' + d.utilization_pct + '% of the paper used · ' + d.waste_pct + '% waste</div>' +
+      '<div class="text-muted small mt-1">Sheet ' + fmt(d.sheet_mm[0]) + ' × ' + fmt(d.sheet_mm[1]) + ' ' + suf + ' (' + d.orientation + ')</div>';
+    if (d.total_cost !== null) h += '<div class="small mt-1">Cost: ' + d.total_cost.toFixed(2) + ' (' + d.cost_per_sticker.toFixed(3) + ' each)</div>';
+    if (d.solo_fit && d.solo_fit.length) {
+      h += '<hr class="my-2">';
+      d.solo_fit.forEach(sf => h += '<div class="small"><i class="fas fa-expand me-1 text-muted"></i>'
+        + sf.count + ' of ' + esc(sf.name) + ' would fit in the page.</div>');
+    }
+    const tips = (d.warnings || []).length + (d.suggestions || []).length;
+    if (tips) {
+      h += '<details class="mt-2"><summary class="small text-muted">Tips <span class="badge bg-secondary">' + tips + '</span></summary>';
+      d.warnings.forEach(w => h += '<div class="alert alert-warning py-1 px-2 mt-2 mb-0 small">' + esc(w) + '</div>');
+      d.suggestions.forEach(s => h += '<div class="alert alert-success py-1 px-2 mt-2 mb-0 small"><i class="fas fa-lightbulb me-1"></i>' + esc(suggestionLine(s, unit)) + '</div>');
+      h += '</details>';
+    }
+    box.className = ''; box.innerHTML = h;
+  }
+
+  async function getQuote() {
+    const seq = ++quoteSeq;
+    try {
+      const r = await fetch(QUOTE_URL, { method: 'POST', body: formParams(), headers: { 'X-CSRFToken': csrf } });
+      const d = await r.json();
+      if (seq !== quoteSeq) return;
+      lastQuote = d;
+      renderQuote(d);
+    } catch (e) { /* offline or server error: keep the last numbers */ }
+  }
+
+  async function detect(row, file) {
+    const msg = $(row, '.detect-msg');
+    msg.className = 'small text-muted detect-msg mt-1'; msg.textContent = 'Reading image…';
+    const thumb = $(row, '.thumb'); thumb.src = URL.createObjectURL(file); thumb.classList.remove('d-none');
+    $(row, '.file-name').textContent = file.name;
+    const fd = new FormData(); fd.append('sticker_image', file);
+    try {
+      const r = await fetch(DETECT_URL, { method: 'POST', body: fd, headers: { 'X-CSRFToken': csrf } });
+      const d = await r.json();
+      if (!d.success) { msg.className = 'small text-danger detect-msg mt-1'; msg.textContent = d.error; return; }
+      const w = row.querySelector('[name$="-width_mm"]'), h = row.querySelector('[name$="-height_mm"]');
+      w.dataset.mm = String(d.mm.w); PGUnits.displayField(w, PGUnits.getUnit());
+      h.dataset.mm = String(d.mm.h); PGUnits.displayField(h, PGUnits.getUnit());
+      row.querySelector('[name$="-px_w"]').value = d.px.w;
+      row.querySelector('[name$="-px_h"]').value = d.px.h;
+      row.dataset.ratio = d.px.h / d.px.w;
+      msg.className = 'small detect-msg mt-1 ' + (d.dpi_status === 'file' ? 'text-muted' : 'text-warning');
+      msg.textContent = d.message;
+      scheduleQuote();
+    } catch (e) { msg.className = 'small text-danger detect-msg mt-1'; msg.textContent = 'Could not read the image. Please enter the size yourself.'; }
+  }
+
+  rowsEl.addEventListener('change', e => {
+    if (e.target.classList.contains('design-file') && e.target.files[0]) detect(e.target.closest('[data-row]'), e.target.files[0]);
+  });
+  rowsEl.addEventListener('input', e => {
+    const row = e.target.closest('[data-row]');
+    if (!row) return;
+    const unit = PGUnits.getUnit();
+    const w = row.querySelector('[name$="-width_mm"]'), h = row.querySelector('[name$="-height_mm"]');
+    if (e.target === w || e.target === h) PGUnits.syncFieldToMm(e.target, unit);
+    const ratio = parseFloat(row.dataset.ratio);
+    if ($(row, '.lock').checked && ratio) {
+      if (e.target === w && w.dataset.mm !== '') {
+        const hMm = parseFloat(w.dataset.mm) * ratio;
+        h.dataset.mm = String(hMm); h.value = PGUnits.formatMm(hMm, unit);
+      } else if (e.target === h && h.dataset.mm !== '') {
+        const wMm = parseFloat(h.dataset.mm) / ratio;
+        w.dataset.mm = String(wMm); w.value = PGUnits.formatMm(wMm, unit);
+      }
+    }
+    scheduleQuote();
+  });
+  rowsEl.addEventListener('click', e => {
+    const btn = e.target.closest('.remove-row');
+    if (btn) { btn.closest('[data-row]').remove(); renumber(); scheduleQuote(); }
+  });
+  document.getElementById('add-row').addEventListener('click', () => {
+    rowsEl.insertAdjacentHTML('beforeend', tpl);
+    renumber();
+    applyUnitToScope(rowsEl.lastElementChild, PGUnits.getUnit());
+  });
+
+  const custom = form.querySelector('[name=use_custom_paper]');
+  function toggleCustom() {
+    document.querySelectorAll('.custom-paper').forEach(el => el.classList.toggle('d-none', !custom.checked));
+    document.getElementById('standard-paper').classList.toggle('d-none', custom.checked);
+  }
+  custom.addEventListener('change', () => { toggleCustom(); scheduleQuote(); });
+  form.querySelectorAll('[name=paper_size],[name=paper_orientation],[name^=margin_],[name$=_spacing],[name=allow_rotation],[name=group_by_design],[name^=custom_paper]')
+      .forEach(el => el.addEventListener('input', () => {
+        if (el.classList.contains('len-field')) PGUnits.syncFieldToMm(el, PGUnits.getUnit());
+        scheduleQuote();
+      }));
+
+  // ---- units: apply the stored/preferred unit to every length field, the
+  // paper-size dropdown text, and the small unit labels next to each field.
+  function applyUnitToScope(scope, unit) {
+    scope.querySelectorAll('.len-field').forEach(el => PGUnits.displayField(el, unit));
+    scope.querySelectorAll('.unit-suffix').forEach(el => { el.textContent = PGUnits.suffix(unit); });
+  }
+  function applyUnitToPaperOptions(unit) {
+    document.querySelectorAll('#id_paper_size option').forEach(opt => {
+      const wmm = parseFloat(opt.dataset.wMm), hmm = parseFloat(opt.dataset.hMm);
+      if (isNaN(wmm) || isNaN(hmm)) return;
+      opt.textContent = opt.dataset.name + ' (' + PGUnits.formatMm(wmm, unit) + ' × ' + PGUnits.formatMm(hmm, unit) + ' ' + PGUnits.suffix(unit) + ')';
+    });
+  }
+  function setUnit(unit) {
+    PGUnits.setUnit(unit);
+    applyUnitToScope(document, unit);
+    applyUnitToPaperOptions(unit);
+    renderQuote(lastQuote);           // numbers are unchanged; only re-formats what's on screen
+  }
+  document.querySelectorAll('#unit-menu [data-unit]').forEach(btn => {
+    btn.addEventListener('click', () => setUnit(btn.dataset.unit));
+  });
+
+  form.addEventListener('submit', () => {
+    // the server always expects millimetres, whatever unit is on screen
+    form.querySelectorAll('.len-field').forEach(el => { if (el.dataset.mm !== '') el.value = el.dataset.mm; });
+    document.getElementById('overlay').classList.add('on');
+  });
+
+  renumber();
+  applyUnitToScope(document, PGUnits.getUnit());
+  applyUnitToPaperOptions(PGUnits.getUnit());
+  if (!HAS_SERVER_ERRORS) restoreDraft();   // a page re-shown after a validation error already has the submitted values
+  toggleCustom(); scheduleQuote();
+})();
+</script>
+</body>
+</html>

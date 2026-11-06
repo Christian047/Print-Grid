@@ -1,676 +1,446 @@
-# views.py - Updated with color mode conversion and automatic dimension handling
+# views.py - rebuilt around layout_engine / multi_engine.
+#
+# Flow: upload design(s) -> live quote -> calculate -> result page -> download.
+# Jobs are reached by an unguessable token; there is no login. Every failure the
+# customer can fix comes back as a readable message (no more silent redirects).
 
-from django.shortcuts import render, redirect, get_object_or_404
-from django.http import JsonResponse, HttpResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
-from .models import PaperSize, StickerLayout
-from PIL import Image, ImageCms
-import io
-import json
-import base64
-import math
-import os
+import hashlib
 import logging
-import traceback
-from django.contrib import messages
-import tempfile
-import logging
-from django.http import HttpResponse, JsonResponse
+import re
+
+from django.db import transaction
+from django.http import Http404, HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
+
+from . import pdf_export
+from .forms import (MAX_PIXELS, MAX_UPLOAD_MB, JobForm, collect_errors, design_formset,
+                    make_plan)
+from .layout_engine import LayoutError, effective_dpi, suggest_sizes
+from .models import PaperSize, PrintProfile, StickerDesign, StickerLayout
+
+logger = logging.getLogger("app")
 
 
+# --------------------------------------------------------------------------
+# helpers
+# --------------------------------------------------------------------------
 
-# logger = logging.getLogger(__name__)
-logger = logging.getLogger('app')
+def _recent_jobs(request):
+    key = request.session.session_key
+    if not key:
+        return []
+    return list(StickerLayout.objects.filter(session_key=key, token__isnull=False)
+                .exclude(status=StickerLayout.STATUS_FAILED)[:5])
 
-def index(request):
-    """Index page with form for creating a new layout"""
-    # Check if paper sizes exist, create if needed
-    if not PaperSize.objects.exists():
-        # Define standard paper sizes
-        paper_sizes = [
-            {"name": "A4", "width_mm": 210, "height_mm": 297},
-            {"name": "US Letter", "width_mm": 215.9, "height_mm": 279.4},
-            {"name": "A3", "width_mm": 297, "height_mm": 420},    
-            {"name": "A5", "width_mm": 148, "height_mm": 210},
-            {"name": "A6", "width_mm": 105, "height_mm": 148},
-            {"name": "B5", "width_mm": 176, "height_mm": 250},
-            {"name": "Legal", "width_mm": 215.9, "height_mm": 355.6},
-            {"name": "Tabloid", "width_mm": 279.4, "height_mm": 431.8},
-            {"name": "4x6 Photo", "width_mm": 101.6, "height_mm": 152.4},
-            {"name": "5x7 Photo", "width_mm": 127, "height_mm": 177.8},
-            {"name": "Executive", "width_mm": 184.15, "height_mm": 266.7},
-            {"name": "Index Card 3x5", "width_mm": 76.2, "height_mm": 127},
-            {"name": "Index Card 4x6", "width_mm": 101.6, "height_mm": 152.4},
-            {"name": "Index Card 5x8", "width_mm": 127, "height_mm": 203.2},
-            {"name": "Statement", "width_mm": 139.7, "height_mm": 215.9},
-            {"name": "Half Letter", "width_mm": 139.7, "height_mm": 215.9},
-            {"name": "Postcard", "width_mm": 101.6, "height_mm": 152.4},
-        ]
-        
-        # Create paper sizes
-        for size in paper_sizes:
-            PaperSize.objects.create(**size)
-    
-    # Get all paper sizes for the template
-    paper_sizes = PaperSize.objects.all().order_by('name')
-    recent_layouts = StickerLayout.objects.all().order_by('-created_at')[:5]
-    
-    return render(request, 'base/index2.html', {
-        'paper_sizes': paper_sizes,
-        'recent_layouts': recent_layouts
+
+def _render_index(request, form, formset, errors=None, edit_job=None):
+    return render(request, "base/index2.html", {
+        "form": form, "formset": formset, "errors": errors or [],
+        "paper_sizes": PaperSize.objects.filter(is_active=True),
+        "recent_jobs": [] if edit_job else _recent_jobs(request),
+        "max_upload_mb": MAX_UPLOAD_MB,
+        "edit_job": edit_job,
     })
 
 
+def _get_job(token):
+    job = get_object_or_404(StickerLayout, token=token)
+    if job.is_legacy:                       # old single-design layouts are admin-only
+        raise Http404
+    return job
 
 
-@csrf_exempt
-def detect_sticker_size(request):
-    """API endpoint to detect sticker dimensions from uploaded image"""
-    
-    if request.method != 'POST':
-        return JsonResponse({'success': False}, status=405)
-    
-    if not request.FILES.get('sticker_image'):
-        return JsonResponse({'success': False}, status=400)
-    
+def _require_ready(job):
+    if job.status != StickerLayout.STATUS_READY or not job.layout_data:
+        raise Http404
+
+
+def _int_param(request, name, low, high, default):
     try:
-        sticker_image = request.FILES['sticker_image']
-        
-        # Open and analyze image
-        img = Image.open(sticker_image)
-        width_px, height_px = img.size
-        
-        # Get image DPI
-        dpi_x, dpi_y = 300, 300  # Default DPI
-        if 'dpi' in img.info:
-            original_dpi = img.info['dpi']
-            dpi_x, dpi_y = original_dpi
-            # Convert fractions to floats
-            dpi_x = float(dpi_x)
-            dpi_y = float(dpi_y)
-        
-        # Calculate physical dimensions
-        width_mm = (width_px / dpi_x) * 25.4
-        height_mm = (height_px / dpi_y) * 25.4
-        
-        width_inch = width_px / dpi_x
-        height_inch = height_px / dpi_y
-        
-        # Get color mode
-        color_mode = img.mode
-        
-        # Generate thumbnail
-        img.thumbnail((150, 150))
-        buffered = io.BytesIO()
-        img.save(buffered, format="PNG")
-        thumbnail = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        
-        # Calculate safe printing size
-        safe_width_mm = width_mm * 0.95
-        safe_height_mm = height_mm * 0.95
-        
-        # Prepare response
-        response_data = {
-            'success': True,
-            'dimensions': {
-                'pixels': {
-                    'width': width_px,
-                    'height': height_px
-                },
-                'mm': {
-                    'width': round(width_mm, 2),
-                    'height': round(height_mm, 2)
-                },
-                'safe_mm': {
-                    'width': round(safe_width_mm, 2),
-                    'height': round(safe_height_mm, 2)
-                },
-                'inches': {
-                    'width': round(width_inch, 2),
-                    'height': round(height_inch, 2)
-                },
-                'dpi': {
-                    'x': dpi_x,
-                    'y': dpi_y
-                }
-            },
-            'color_mode': color_mode,
-            'thumbnail': thumbnail
-        }
-        
-        return JsonResponse(response_data)
-    
-    except Exception as e:
-        return JsonResponse({'success': False}, status=400)
+        return max(low, min(high, int(request.GET.get(name, default))))
+    except (TypeError, ValueError):
+        return default
 
 
+def _safe_filename(name, ext):
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", name or "").strip("_") or "layout"
+    return f"{stem[:60]}.{ext}"
 
 
-
-
-
-
-def calculate_layout(request):
-    """Enhanced layout calculation with comprehensive error handling"""
-    
-    if request.method != "POST":
-        return redirect('index')
-    
+def _single_design_suggestions(sheet, design_cd, image_px=None):
+    """Size suggestions only make sense when there is one design."""
     try:
-        # Check sticker dimensions and log them
-        sticker_width = float(request.POST.get('sticker_width', 0))
-        sticker_height = float(request.POST.get('sticker_height', 0))
-        
-        # Early validation - check if dimensions are valid
-        if sticker_width <= 0 or sticker_height <= 0:
-            return redirect('index')
-            
-        # Get paper dimensions
-        use_custom_paper = request.POST.get('use_custom_paper', 'false') == 'true'
-        
-        if use_custom_paper:
-            # Create custom paper size
-            paper_width = float(request.POST.get('custom_paper_width'))
-            paper_height = float(request.POST.get('custom_paper_height'))
-            paper_name = f"Custom {paper_width}x{paper_height}mm"
-            
-            # Create or get the custom paper size
-            paper_size, created = PaperSize.objects.get_or_create(
-                name=paper_name,
-                defaults={
-                    'width_mm': paper_width,
-                    'height_mm': paper_height
-                }
-            )
-        else:
-            # Use standard paper size
-            paper_size_id = request.POST.get('paper_size')
-            paper_size = PaperSize.objects.get(id=paper_size_id)
-            
-            paper_width = paper_size.width_mm
-            paper_height = paper_size.height_mm
-        
-        # Get orientation and adjust dimensions if needed
-        orientation = request.POST.get('paper_orientation', 'portrait')
-        
-        if orientation == 'landscape' and paper_width < paper_height:
-            paper_width, paper_height = paper_height, paper_width
-        
-        # Get margins (in mm)
-        margin_top = float(request.POST.get('margin_top', 10))
-        margin_right = float(request.POST.get('margin_right', 10))
-        margin_bottom = float(request.POST.get('margin_bottom', 10))
-        margin_left = float(request.POST.get('margin_left', 10))
-        
-        # Get spacing between stickers (in mm)
-        horizontal_spacing = float(request.POST.get('horizontal_spacing', 2))
-        vertical_spacing = float(request.POST.get('vertical_spacing', 2))
-        
-        # Calculate printable area dimensions
-        printable_width = paper_width - margin_left - margin_right
-        printable_height = paper_height - margin_top - margin_bottom
-        
-        # Early validation - check if sticker can fit in printable area
-        if sticker_width > printable_width or sticker_height > printable_height:
-            return redirect('index')
-        
-        # Calculate how many stickers can fit horizontally and vertically
-        stickers_per_row = math.floor(printable_width / (sticker_width + horizontal_spacing))
-        rows_per_page = math.floor(printable_height / (sticker_height + vertical_spacing))
-        
-        # Early validation - check if at least one sticker can fit
-        if stickers_per_row <= 0 or rows_per_page <= 0:
-            return redirect('index')
-        
-        # Calculate total stickers per page
-        total_stickers = stickers_per_row * rows_per_page
-        
-        # Process the uploaded image
-        sticker_image = request.FILES.get('sticker_image')
-        if not sticker_image:
-            return redirect('index')
-        
-        # Get the color mode preference if available
-        color_mode_preference = request.POST.get('color_mode', 'original')
-        
-        # Create layout record
-        try:
-            layout = StickerLayout.objects.create(
-                name=request.POST.get('layout_name', 'New Layout'),
-                paper_size=paper_size,
-                margin_top=margin_top,
-                margin_right=margin_right,
-                margin_bottom=margin_bottom,
-                margin_left=margin_left,
-                sticker_width=sticker_width,
-                sticker_height=sticker_height,
-                horizontal_spacing=horizontal_spacing,
-                vertical_spacing=vertical_spacing,
-                original_image=sticker_image
-            )
-        except Exception:
-            return redirect('index')
-        
-        # Generate positions for all stickers
-        positions = []
-        for row in range(rows_per_page):
-            for col in range(stickers_per_row):
-                x = margin_left + col * (sticker_width + horizontal_spacing)
-                y = margin_top + row * (sticker_height + vertical_spacing)
-                positions.append({
-                    'x': x,
-                    'y': y,
-                    'row': row,
-                    'col': col,
-                    'index': row * stickers_per_row + col
-                })
-        
-        # Create comprehensive layout data
-        layout_data = {
-            'stickers_per_row': stickers_per_row,
-            'rows_per_page': rows_per_page,
-            'total_stickers': total_stickers,
-            'positions': positions,
-            'paper_width': paper_width,
-            'paper_height': paper_height,
-            'margins': {
-                'top': margin_top,
-                'right': margin_right,
-                'bottom': margin_bottom,
-                'left': margin_left
-            },
-            'sticker': {
-                'width': sticker_width,
-                'height': sticker_height
-            },
-            'spacing': {
-                'horizontal': horizontal_spacing,
-                'vertical': vertical_spacing
-            },
-            'color_mode': color_mode_preference
-        }
-        
-        # Store the layout data
-        layout.layout_data = layout_data
-        layout.save()
-        
-        # Process the image for base64
-        try:
-            with Image.open(layout.original_image.path) as img:
-                # Get image current color mode
-                original_color_mode = img.mode
-                
-                # Convert color mode if requested and different from original
-                if color_mode_preference != 'original' and color_mode_preference != original_color_mode:
-                    if color_mode_preference == 'CMYK' and original_color_mode != 'CMYK':
-                        # Convert RGB to CMYK
-                        if original_color_mode == 'RGB':
-                            try:
-                                # Use ImageCms for proper color conversion
-                                rgb_profile = ImageCms.createProfile("sRGB")
-                                cmyk_profile = ImageCms.createProfile("USWebCoatedSWOP")
-                                img = ImageCms.profileToProfile(img, rgb_profile, cmyk_profile, outputMode='CMYK')
-                            except Exception:
-                                # Fallback to simple conversion
-                                img = img.convert('CMYK')
-                    elif color_mode_preference == 'RGB' and original_color_mode != 'RGB':
-                        # Convert CMYK to RGB
-                        if original_color_mode == 'CMYK':
-                            try:
-                                cmyk_profile = ImageCms.createProfile("USWebCoatedSWOP")
-                                rgb_profile = ImageCms.createProfile("sRGB")
-                                img = ImageCms.profileToProfile(img, cmyk_profile, rgb_profile, outputMode='RGB')
-                            except Exception:
-                                # Fallback to simple conversion
-                                img = img.convert('RGB')
-                
-                # Save to buffer for base64 encoding
-                buffer = io.BytesIO()
-                img.save(buffer, format="PNG")
-                image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        except Exception:
-            return redirect('index')
-        
-        # Render template with context
-        context = {
-            'layout': layout,
-            'layout_data_json': json.dumps(layout_data),
-            'image_base64': image_base64,
-            'paper_size': paper_size,
-            'color_mode': color_mode_preference
-        }
-        
-        return render(request, 'base/editor.html', context)
-    
-    except Exception:
-        # Catch-all error handling
-        return redirect('index')
+        return [s.to_dict() for s in suggest_sizes(
+            sheet, design_cd["width_mm"], design_cd["height_mm"], design_cd["quantity"],
+            image_px=image_px)]
+    except LayoutError:
+        return []
 
 
+def _facts_and_hash(upload):
+    """Read the real pixel size/DPI from an upload and hash its bytes, without
+    trusting anything the browser claimed. Rewinds the file afterwards."""
+    facts = pdf_export.image_facts(upload)
+    digest = hashlib.sha256()
+    for chunk in upload.chunks():
+        digest.update(chunk)
+    upload.seek(0)
+    return facts, digest.hexdigest()
 
 
-
-def download_layout(request, layout_id):
-    """Generate downloadable file for printing with color mode support"""
-    layout = get_object_or_404(StickerLayout, id=layout_id)
-    
-    # Get requested format
-    download_format = request.GET.get('format', 'pdf')
-    
-    # Get requested color mode (RGB/CMYK)
-    color_mode = request.GET.get('color_mode', layout.layout_data.get('color_mode', 'original'))
-    
-    if download_format == 'pdf':
-        return generate_pdf(layout, color_mode)
-    elif download_format == 'png':
-        return generate_png(layout, color_mode)
+def _job_initial(job):
+    """Prefill the create/edit form from a job's CURRENT saved values."""
+    initial = {
+        "layout_name": job.name, "paper_orientation": job.orientation,
+        "margin_top": job.margin_top, "margin_right": job.margin_right,
+        "margin_bottom": job.margin_bottom, "margin_left": job.margin_left,
+        "horizontal_spacing": job.horizontal_spacing, "vertical_spacing": job.vertical_spacing,
+        "allow_rotation": job.allow_rotation, "group_by_design": job.group_by_design,
+    }
+    if job.paper_size_id:
+        initial["paper_size"], initial["use_custom_paper"] = job.paper_size_id, False
     else:
-        return JsonResponse({
-            'success': False, 
-            'error': 'Unsupported format'
-        }, status=400)
+        # A custom sheet has no PaperSize row; feeding the job's own (already
+        # oriented) dimensions back in round-trips correctly on re-save.
+        initial["use_custom_paper"] = True
+        initial["custom_paper_width"] = job.sheet_width_mm
+        initial["custom_paper_height"] = job.sheet_height_mm
+    return initial
 
 
+def _design_initial(d):
+    """Prefill one design row. thumb_url (not a real form field) tells the
+    template to show the CURRENT artwork and make the file optional."""
+    return {"design_id": d.id, "name": d.name, "width_mm": d.width_mm, "height_mm": d.height_mm,
+           "quantity": d.quantity, "px_w": d.pixel_width, "px_h": d.pixel_height,
+           "thumb_url": d.image.url}
 
 
+# --------------------------------------------------------------------------
+# pages
+# --------------------------------------------------------------------------
 
+@require_GET
+def index(request):
+    PaperSize.ensure_defaults()
+    return _render_index(request, JobForm(profile=PrintProfile.get_default()), design_formset())
 
-
-
-
-
-
-
-
-
-
-
-def generate_pdf(layout, color_mode='original'):
-    """Generate a PDF for printing stickers with color mode support"""
-    try:
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.units import mm
-        from reportlab.lib.utils import ImageReader
-
-        logger.info(f"[PDF] Starting PDF generation for layout: {layout.name}, ID: {layout.id}")
-        logger.info(f"[PDF] Color mode requested: {color_mode}")
-        logger.info(f"[PDF] Original image path: {layout.original_image.path}")
-
-        buffer = io.BytesIO()
-
-        width_mm = layout.layout_data['paper_width']
-        height_mm = layout.layout_data['paper_height']
-        width_pt = width_mm * 72 / 25.4
-        height_pt = height_mm * 72 / 25.4
-        logger.info(f"[PDF] Page size in mm: {width_mm} x {height_mm}")
-        logger.info(f"[PDF] Page size in points: {width_pt} x {height_pt}")
-
-        p = canvas.Canvas(buffer, pagesize=(width_pt, height_pt))
-
-        # Open image
-        logger.info("[PDF] Opening image...")
-        with Image.open(layout.original_image.path) as img:
-            logger.info(f"[PDF] Original image mode: {img.mode}")
-            logger.info(f"[PDF] Image size: {img.size}")
-
-            # Convert color mode if needed
-            if color_mode != 'original' and color_mode not in (img.mode, 'original'):
-                try:
-                    logger.info(f"[PDF] Attempting color conversion to {color_mode}")
-                    if color_mode == 'CMYK':
-                        img = ImageCms.profileToProfile(
-                            img,
-                            ImageCms.createProfile("sRGB"),
-                            ImageCms.createProfile("USWebCoatedSWOP"),
-                            outputMode='CMYK'
-                        )
-                    elif color_mode == 'RGB':
-                        img = ImageCms.profileToProfile(
-                            img,
-                            ImageCms.createProfile("USWebCoatedSWOP"),
-                            ImageCms.createProfile("sRGB"),
-                            outputMode='RGB'
-                        )
-                    logger.info(f"[PDF] Conversion successful. New mode: {img.mode}")
-                except Exception as e:
-                    logger.error(f"[PDF] Color mode conversion failed: {str(e)}")
-                    img = img.convert(color_mode)
-                    logger.info(f"[PDF] Fallback conversion used. New mode: {img.mode}")
-
-            # Prepare image for ReportLab
-            logger.info("[PDF] Saving image to in-memory PNG stream...")
-            img_io = io.BytesIO()
-            img.save(img_io, format='PNG')
-            img_io.seek(0)
-            rl_image = ImageReader(img_io)
-            logger.info("[PDF] ImageReader ready.")
-
-            # Draw stickers
-            logger.info(f"[PDF] Drawing {len(layout.layout_data['positions'])} stickers...")
-            for index, position in enumerate(layout.layout_data['positions']):
-                x_pt = position['x'] * 72 / 25.4
-                y_pt = height_pt - ((position['y'] + layout.sticker_height) * 72 / 25.4)
-                logger.info(f"[PDF] Sticker {index+1}: x={position['x']}mm, y={position['y']}mm -> x_pt={x_pt}, y_pt={y_pt}")
-                p.drawImage(rl_image, x_pt, y_pt,
-                            width=layout.sticker_width * 72 / 25.4,
-                            height=layout.sticker_height * 72 / 25.4,
-                            preserveAspectRatio=True)
-
-        p.save()
-        buffer.seek(0)
-        logger.info("[PDF] PDF generation completed successfully.")
-
-        response = HttpResponse(buffer, content_type='application/pdf')
-        suffix = f"_{color_mode.lower()}" if color_mode != 'original' else ""
-        response['Content-Disposition'] = f'attachment; filename="{layout.name}{suffix}.pdf"'
-        return response
-
-    except Exception as e:
-        tb = traceback.format_exc()
-        logger.error(f"[PDF] Error generating PDF: {str(e)}\nTraceback:\n{tb}")
-        return JsonResponse({'success': False, 'error': str(e)})
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def generate_png(layout, color_mode='original'):
-    """Generate a PNG for the layout with color mode support"""
-    try:
-        # Open the original image
-        with Image.open(layout.original_image.path) as img:
-            # Convert color mode if needed
-            if color_mode != 'original' and color_mode not in (img.mode, 'original'):
-                if color_mode == 'CMYK' and img.mode != 'CMYK':
-                    try:
-                        rgb_profile = ImageCms.createProfile("sRGB")
-                        cmyk_profile = ImageCms.createProfile("USWebCoatedSWOP")
-                        img = ImageCms.profileToProfile(img, rgb_profile, cmyk_profile, outputMode='CMYK')
-                    except Exception as e:
-                        logger.error(f"Error converting to CMYK for PNG: {str(e)}")
-                        img = img.convert('CMYK')
-                elif color_mode == 'RGB' and img.mode != 'RGB':
-                    try:
-                        cmyk_profile = ImageCms.createProfile("USWebCoatedSWOP")
-                        rgb_profile = ImageCms.createProfile("sRGB")
-                        img = ImageCms.profileToProfile(img, cmyk_profile, rgb_profile, outputMode='RGB')
-                    except Exception as e:
-                        logger.error(f"Error converting to RGB for PNG: {str(e)}")
-                        img = img.convert('RGB')
-        
-        # Create a PNG file for download
-        buffer = io.BytesIO()
-        img.save(buffer, format="PNG")
-        buffer.seek(0)
-        
-        response = HttpResponse(buffer, content_type='image/png')
-        color_suffix = f"_{color_mode.lower()}" if color_mode != 'original' else ""
-        response['Content-Disposition'] = f'attachment; filename="{layout.name}{color_suffix}.png"'
-        
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error generating PNG: {str(e)}")
-        return JsonResponse({'success': False, 'error': str(e)})
-
-def edit_layout(request, layout_id):
-    """Edit an existing layout"""
-    try:
-        layout = get_object_or_404(StickerLayout, id=layout_id)
-        
-        # Convert image to base64 for display
-        with open(layout.original_image.path, "rb") as image_file:
-            image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
-        
-        return render(request, 'base/editor.html', {
-            'layout': layout,
-            'layout_data_json': json.dumps(layout.layout_data),
-            'image_base64': image_base64,
-            'paper_size': layout.paper_size
-        })
-        
-    except Exception as e:
-        logger.error(f"Error editing layout: {str(e)}")
-        return redirect('index')
 
 @require_POST
-def save_layout(request, layout_id):
-    """Save updated layout positions"""
+def detect_sticker_size(request):
+    """Read size/DPI from an uploaded image so the customer doesn't type it."""
+    f = request.FILES.get("sticker_image")
+    if not f:
+        return JsonResponse({"success": False, "error": "No image was received."}, status=400)
+    if f.size > MAX_UPLOAD_MB * 1024 * 1024:
+        return JsonResponse({"success": False,
+                             "error": f"The image is larger than {MAX_UPLOAD_MB} MB."}, status=400)
     try:
-        layout = get_object_or_404(StickerLayout, id=layout_id)
-        
-        # Parse JSON data from request
-        data = json.loads(request.body)
-        positions = data.get('positions', [])
-        
-        # Update layout name if provided
-        new_name = data.get('name')
-        if new_name:
-            layout.name = new_name
-        
-        # Update the layout data with new positions
-        layout_data = layout.layout_data
-        layout_data['positions'] = positions
-        layout_data['total_stickers'] = len(positions)
-        
-        layout.layout_data = layout_data
-        layout.save()
-        
-        return JsonResponse({'success': True})
-        
-    except Exception as e:
-        logger.error(f"Error saving layout: {str(e)}")
-        return JsonResponse({'success': False, 'error': str(e)})
+        facts = pdf_export.image_facts(f)
+    except LayoutError as exc:
+        return JsonResponse({"success": False, "error": str(exc)}, status=400)
+    if facts["px_w"] * facts["px_h"] > MAX_PIXELS:
+        return JsonResponse({"success": False,
+                             "error": "The image has too many pixels; please reduce its size."},
+                            status=400)
 
-def custom_paper_size(request):
-    """Handle custom paper size creation"""
-    if request.method == "POST":
-        try:
-            width_mm = float(request.POST.get('width_mm'))
-            height_mm = float(request.POST.get('height_mm'))
-            name = request.POST.get('name', f'Custom {width_mm}x{height_mm}mm')
-            
-            # Create the paper size
-            paper_size = PaperSize.objects.create(
-                name=name,
-                width_mm=width_mm,
-                height_mm=height_mm
-            )
-            
-            return JsonResponse({
-                'success': True, 
-                'paper_size': {
-                    'id': paper_size.id,
-                    'name': paper_size.name,
-                    'width_mm': paper_size.width_mm,
-                    'height_mm': paper_size.height_mm
-                }
-            })
-            
-        except Exception as e:
-            logger.error(f"Error creating custom paper size: {str(e)}")
-            return JsonResponse({'success': False, 'error': str(e)})
-    
-    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    dpi = facts["dpi_used"]
+    w_mm, h_mm = facts["px_w"] / dpi * 25.4, facts["px_h"] / dpi * 25.4
+    if facts["dpi_status"] == "file":
+        message = f"Detected {facts['px_w']} × {facts['px_h']} px at {dpi:g} DPI."
+    else:
+        message = (f"Detected {facts['px_w']} × {facts['px_h']} px. The file has no reliable DPI, "
+                   f"so {dpi} DPI is assumed. Please check the size below.")
+    return JsonResponse({
+        "success": True, "px": {"w": facts["px_w"], "h": facts["px_h"]},
+        "dpi_used": dpi, "dpi_status": facts["dpi_status"], "color_mode": facts["color_mode"],
+        "mm": {"w": round(w_mm, 2), "h": round(h_mm, 2)}, "message": message})
 
-def calculate_layout_ajax(request):
-    """Calculate layout without creating a record (for preview)"""
-    if request.method == "POST":
+
+@require_POST
+def quote(request):
+    """Numbers only (no drawing): what the current settings would produce."""
+    form = JobForm(request.POST, profile=PrintProfile.get_default())
+    formset = design_formset(request.POST, quote=True)
+    form_ok, set_ok = form.is_valid(), formset.is_valid()
+    if not (form_ok and set_ok):
+        return JsonResponse({"ok": False, "errors": collect_errors(form, formset)})
+    designs = [f.cleaned_data for f in formset.forms if f.cleaned_data]
+    try:
+        made = make_plan(form.cleaned_data, designs, align=form.profile.align)
+    except LayoutError as exc:
+        return JsonResponse({"ok": False, "errors": [str(exc)]})
+
+    plan = made["plan"]
+    warnings = []
+    for i, d in enumerate(designs):
+        if d.get("px_w") and d.get("px_h"):
+            dpi = effective_dpi(d["px_w"], d["px_h"], d["width_mm"], d["height_mm"])
+            if dpi < 250:
+                name = d.get("name") or f"Design {i + 1}"
+                warnings.append(f"{name} would print at about {dpi:.0f} DPI (250+ recommended).")
+    suggestions = []
+    if len(designs) == 1:
+        px = (designs[0]["px_w"], designs[0]["px_h"]) if designs[0].get("px_w") and designs[0].get("px_h") else None
+        suggestions = _single_design_suggestions(made["sheet"], designs[0], px)
+
+    solo_fit = []
+    for i, d in enumerate(designs):
+        label = d.get("name") or ("the sticker" if len(designs) == 1 else f"Design {i + 1}")
+        solo_fit.append({"name": label, "count": plan.per_sheet_alone[i]})
+
+    sheet = made["sheet"]
+    # Preview: with ONE design, show a completely full sheet (how many CAN fit is the
+    # selling point), and mark the stickers beyond the ordered quantity as "room for more".
+    single = len(designs) == 1
+    pv_made = made
+    if single and designs[0]["quantity"] < plan.per_sheet_alone[0]:
         try:
-            data = json.loads(request.body)
-            
-            # Get paper dimensions
-            paper_width = float(data.get('paper_width'))
-            paper_height = float(data.get('paper_height'))
-            
-            # Get margins
-            margin_top = float(data.get('margin_top', 10))
-            margin_right = float(data.get('margin_right', 10))
-            margin_bottom = float(data.get('margin_bottom', 10))
-            margin_left = float(data.get('margin_left', 10))
-            
-            # Get sticker dimensions
-            sticker_width = float(data.get('sticker_width'))
-            sticker_height = float(data.get('sticker_height'))
-            
-            # Get spacing
-            horizontal_spacing = float(data.get('horizontal_spacing', 2))
-            vertical_spacing = float(data.get('vertical_spacing', 2))
-            
-            # Calculate printable area
-            printable_width = paper_width - margin_left - margin_right
-            printable_height = paper_height - margin_top - margin_bottom
-            
-            # Calculate how many stickers can fit
-            stickers_per_row = math.floor((printable_width + horizontal_spacing) / (sticker_width + horizontal_spacing))
-            rows_per_page = math.floor((printable_height + vertical_spacing) / (sticker_height + vertical_spacing))
-            
-            # Calculate total stickers per page
-            total_stickers = stickers_per_row * rows_per_page
-            
-            # Generate positions
-            positions = []
-            for row in range(rows_per_page):
-                for col in range(stickers_per_row):
-                    x = margin_left + col * (sticker_width + horizontal_spacing)
-                    y = margin_top + row * (sticker_height + vertical_spacing)
-                    positions.append({
-                        'x': x,
-                        'y': y,
-                        'row': row,
-                        'col': col,
-                        'index': row * stickers_per_row + col
-                    })
-            
-            # Return the layout data
-            return JsonResponse({
-                'success': True,
-                'layout': {
-                    'stickers_per_row': stickers_per_row,
-                    'rows_per_page': rows_per_page,
-                    'total_stickers': total_stickers,
-                    'positions': positions,
-                    'paper_width': paper_width,
-                    'paper_height': paper_height
-                }
-            })
-            
-        except Exception as e:
-            logger.error(f"Error calculating layout: {str(e)}")
-            return JsonResponse({'success': False, 'error': str(e)})
-    
-    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+            pv_made = make_plan(form.cleaned_data, [{**designs[0], "quantity": plan.per_sheet_alone[0]}],
+                                align=form.profile.align)
+        except LayoutError:
+            pv_made = made
+    preview = {"sheet": pv_made["sheet"].to_dict(),
+               "plans": [sp.to_dict() for sp in pv_made["plan"].sheets[:6]],
+               "capacity_view": single,
+               "solid": min(designs[0]["quantity"], plan.per_sheet_alone[0]) if single else None}
+    return JsonResponse({
+        "preview": preview,
+        "ok": True,
+        "sheets": plan.sheet_count, "total_stickers": plan.total_stickers,
+        "per_sheet_alone": list(plan.per_sheet_alone),
+        "utilization_pct": round(plan.job_utilization_pct, 1),
+        "waste_pct": round(plan.waste_pct, 1),
+        "orientation": made["orientation"],
+        "sheet_mm": [sheet.width, sheet.height],
+        "total_cost": plan.total_cost, "cost_per_sticker": plan.cost_per_sticker,
+        "warnings": warnings, "suggestions": suggestions, "solo_fit": solo_fit,
+    })
+
+
+@require_POST
+def calculate_layout(request):
+    profile = PrintProfile.get_default()
+    form = JobForm(request.POST, profile=profile)
+    formset = design_formset(request.POST, request.FILES)
+    form_ok, set_ok = form.is_valid(), formset.is_valid()
+    if not (form_ok and set_ok):
+        return _render_index(request, form, formset, collect_errors(form, formset))
+
+    design_forms = [f for f in formset.forms if f.cleaned_data]
+    try:
+        made = make_plan(form.cleaned_data, [f.cleaned_data for f in design_forms],
+                         align=profile.align)
+    except LayoutError as exc:
+        return _render_index(request, form, formset, [str(exc)])
+
+    if not request.session.session_key:
+        request.session.create()
+    cd, sheet, plan = form.cleaned_data, made["sheet"], made["plan"]
+
+    with transaction.atomic():
+        job = StickerLayout.objects.create(
+            name=cd.get("layout_name") or "Untitled job",
+            paper_size=made["paper_size"],
+            sheet_width_mm=sheet.width, sheet_height_mm=sheet.height,
+            orientation=made["orientation"],
+            margin_top=sheet.margin_top, margin_right=sheet.margin_right,
+            margin_bottom=sheet.margin_bottom, margin_left=sheet.margin_left,
+            horizontal_spacing=sheet.gap_x, vertical_spacing=sheet.gap_y,
+            allow_rotation=cd["allow_rotation"], group_by_design=cd["group_by_design"],
+            align=profile.align, sheet_cost=made["sheet_cost"],
+            session_key=request.session.session_key)
+        for i, f in enumerate(design_forms):
+            dcd = f.cleaned_data
+            upload = dcd["image"]
+            facts, sha = _facts_and_hash(upload)
+            design = StickerDesign(
+                layout=job, position=i, name=dcd.get("name", ""), width_mm=dcd["width_mm"],
+                height_mm=dcd["height_mm"], quantity=dcd["quantity"],
+                pixel_width=facts["px_w"], pixel_height=facts["px_h"],
+                source_dpi=facts["file_dpi"], color_mode=facts["color_mode"][:10],
+                sha256=sha)
+            design.image.save(upload.name, upload, save=False)
+            design.save()
+        job.apply_plan(plan)
+        job.save()
+    logger.info("job %s created: %s sheets, %s stickers", job.token, job.sheet_count,
+                job.total_stickers)
+    return redirect("result", token=job.token)
+
+
+def _sync_job_designs(job, design_forms):
+    """Create/update/delete StickerDesign rows to match a submitted, already-
+    validated formset, in submission order (positions become 0..N-1).
+
+    Removed rows are deleted FIRST, before anything is renumbered, so a kept
+    row can never collide with a not-yet-deleted removed row's old position."""
+    kept_ids = {f.cleaned_data["design_id"] for f in design_forms if f.cleaned_data.get("design_id")}
+    job.designs.exclude(id__in=kept_ids).delete()
+    for i, f in enumerate(design_forms):
+        dcd = f.cleaned_data
+        design_id = dcd.get("design_id")
+        design = get_object_or_404(StickerDesign, id=design_id, layout=job) if design_id else StickerDesign(layout=job)
+        design.position = i
+        design.name = dcd.get("name", "")
+        design.width_mm, design.height_mm, design.quantity = dcd["width_mm"], dcd["height_mm"], dcd["quantity"]
+        if dcd.get("image"):
+            upload = dcd["image"]
+            facts, sha = _facts_and_hash(upload)
+            if design.image:
+                design.image.delete(save=False)
+            design.image.save(upload.name, upload, save=False)
+            design.pixel_width, design.pixel_height = facts["px_w"], facts["px_h"]
+            design.source_dpi, design.color_mode = facts["file_dpi"], facts["color_mode"][:10]
+            design.sha256 = sha
+        design.save()
+
+
+def _resolve_sheet_dims_simple(cd):
+    """A quick, non-validating sheet-size resolution used only when make_plan()
+    has already failed - just enough to save SOMETHING sensible on the job, so
+    the customer's edit isn't silently discarded and shows up again for them
+    to fix. (The real, auto-orientation-exploring resolution lives in make_plan.)"""
+    if cd.get("use_custom_paper"):
+        paper_obj, w, h = None, cd["custom_paper_width"], cd["custom_paper_height"]
+    else:
+        paper_obj, w, h = cd["paper_size"], cd["paper_size"].width_mm, cd["paper_size"].height_mm
+    lo, hi = min(w, h), max(w, h)
+    orientation = "landscape" if cd.get("paper_orientation") == "landscape" else "portrait"
+    sw, sh = (hi, lo) if orientation == "landscape" else (lo, hi)
+    return paper_obj, sw, sh, orientation
+
+
+def _apply_job_fields(job, cd, paper_size, sw, sh, orientation, margin_top, margin_right,
+                      margin_bottom, margin_left, gap_x, gap_y, sheet_cost):
+    job.name = cd.get("layout_name") or job.name
+    job.paper_size = paper_size
+    job.sheet_width_mm, job.sheet_height_mm = sw, sh
+    job.orientation = orientation
+    job.margin_top, job.margin_right = margin_top, margin_right
+    job.margin_bottom, job.margin_left = margin_bottom, margin_left
+    job.horizontal_spacing, job.vertical_spacing = gap_x, gap_y
+    job.allow_rotation, job.group_by_design = cd["allow_rotation"], cd["group_by_design"]
+    job.sheet_cost = sheet_cost
+
+
+@require_http_methods(["GET", "POST"])
+def job_edit(request, token):
+    """The same create-job page, reused to edit an existing job in place.
+
+    Existing designs are prefilled with their real, already-saved artwork, so
+    revisiting this page never requires re-choosing a file that was already
+    uploaded - only a design added during THIS visit (and not yet submitted)
+    needs one, which is an unavoidable browser limit, not a data loss.
+
+    A submission that doesn't physically fit is still SAVED (marking the job
+    failed, with the customer's own numbers kept) rather than silently
+    rejected, so nothing they typed is lost and the result page's "Edit this
+    job" link can bring them straight back to the exact thing that needs
+    fixing."""
+    job = _get_job(token)
+    profile = PrintProfile.get_default()   # only supplies fallbacks JobForm needs internally
+
+    if request.method == "POST":
+        form = JobForm(request.POST, profile=profile)
+        formset = design_formset(request.POST, request.FILES, editing=True)
+        if not (form.is_valid() and formset.is_valid()):
+            return _render_index(request, form, formset, collect_errors(form, formset), edit_job=job)
+
+        design_forms = [f for f in formset.forms if f.cleaned_data]
+        cd = form.cleaned_data
+        try:
+            made = make_plan(cd, [f.cleaned_data for f in design_forms], align=job.align)
+        except LayoutError as exc:
+            paper_obj, sw, sh, orientation = _resolve_sheet_dims_simple(cd)
+            cost = float(paper_obj.cost_per_sheet) if paper_obj and paper_obj.cost_per_sheet is not None else None
+            with transaction.atomic():
+                _sync_job_designs(job, design_forms)
+                _apply_job_fields(job, cd, paper_obj, sw, sh, orientation, cd["margin_top"],
+                                  cd["margin_right"], cd["margin_bottom"], cd["margin_left"],
+                                  cd["horizontal_spacing"], cd["vertical_spacing"], cost)
+                job.mark_failed(str(exc))
+                job.save()
+            return redirect("result", token=token)
+
+        sheet, plan = made["sheet"], made["plan"]
+        with transaction.atomic():
+            _sync_job_designs(job, design_forms)
+            _apply_job_fields(job, cd, made["paper_size"], sheet.width, sheet.height, made["orientation"],
+                              sheet.margin_top, sheet.margin_right, sheet.margin_bottom, sheet.margin_left,
+                              sheet.gap_x, sheet.gap_y, made["sheet_cost"])
+            job.apply_plan(plan)
+            job.save()
+        return redirect("result", token=token)
+
+    form = JobForm(profile=profile, initial=_job_initial(job))
+    formset = design_formset(editing=True, initial=[_design_initial(d) for d in job.designs.all()])
+    return _render_index(request, form, formset, edit_job=job)
+
+
+@require_GET
+def result(request, token):
+    job = _get_job(token)
+    designs = list(job.designs.all())                      # DB truth: always shown, editable regardless of status
+    ready = job.status == StickerLayout.STATUS_READY and bool(job.layout_data)
+    solo_fit = [d["per_sheet_alone"] for d in job.layout_data["designs"]] if ready else [None] * len(designs)
+
+    ctx = {
+        "job": job,
+        "designs": [
+            {"id": d.id, "name": d.display_name, "width": d.width_mm, "height": d.height_mm,
+             "quantity": d.quantity, "per_sheet_alone": solo_fit[i],
+             "dpi": (round(d.effective_dpi()) if d.effective_dpi() else None)}
+            for i, d in enumerate(designs)],
+    }
+    if ready:
+        data = job.layout_data
+        ctx["sheets"] = [
+            {"first": sp["first_sheet"], "last": sp["first_sheet"] + sp["repeat"] - 1,
+             "repeat": sp["repeat"], "count": sp["count"], "util": sp["utilization_sheet_pct"]}
+            for sp in data["sheets"]]
+        if len(designs) == 1:
+            d = designs[0]
+            px = (d.pixel_width, d.pixel_height) if d.pixel_width and d.pixel_height else None
+            ctx["suggestions"] = _single_design_suggestions(
+                job.to_sheet(), {"width_mm": d.width_mm, "height_mm": d.height_mm,
+                                 "quantity": d.quantity}, px)
+    return render(request, "base/result.html", ctx)
+
+
+@require_GET
+def sheet_image(request, token, sheet_no):
+    job = _get_job(token)
+    _require_ready(job)
+    dpi = _int_param(request, "dpi", 30, 300, 100)
+    try:
+        png = pdf_export.png_for_job(job, sheet_no, dpi=dpi,
+                                     guides=request.GET.get("guides", "1") == "1")
+    except LayoutError:
+        raise Http404
+    response = HttpResponse(png, content_type="image/png")
+    response["Cache-Control"] = "private, max-age=3600"
+    return response
+
+
+@require_GET
+def download_layout(request, token):
+    job = _get_job(token)
+    _require_ready(job)
+    fmt = request.GET.get("format", "pdf")
+    try:
+        if fmt == "pdf":
+            body, ctype, ext = pdf_export.pdf_for_job(job), "application/pdf", "pdf"
+        elif fmt == "png":
+            n = _int_param(request, "sheet", 1, job.sheet_count, 1)
+            dpi = _int_param(request, "dpi", 72, 600, 300)
+            body = pdf_export.png_for_job(job, n, dpi=dpi, guides=False)
+            ctype, ext = "image/png", "png"
+        else:
+            return JsonResponse({"success": False, "error": "Unsupported format."}, status=400)
+    except LayoutError as exc:
+        return JsonResponse({"success": False, "error": str(exc)}, status=400)
+    response = HttpResponse(body, content_type=ctype)
+    response["Content-Disposition"] = f'attachment; filename="{_safe_filename(job.name, ext)}"'
+    return response

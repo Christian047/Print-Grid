@@ -1,0 +1,65 @@
+
+
+PrintGrid is a digital print-layout planning and optimization application that 
+calculates design placement and paper utilization, and estimated waste based on defined canvas and dimensions
+
+PrintGrid calculates and displays the percentage of paper 
+used and the percentage of paper remaining based on the current layout.
+
+PrintGrid calculates the number of stickers that can fit within a selected 
+canvas based on the dimensions of the stickers and available canvas space.
+
+PrintGrid stores completed projects, allowing users to access review
+and download previously created projects.
+
+PrintGrid supports different measurement units, which can be toggled through the settings.
+
+PrintGrid supports multiple objects or designs within a single canvas, 
+allowing different designs to be arranged and calculated together.
+
+PrintGrid provides 28 different paper sized canvases for a project.
+
+PrintGrid supports multiple image file formats, 
+including PNG, JPG, WEBP, TIFF, GIF, and BMP, with a maximum file size of 25 MB per file.
+
+PrintGrid takes an average of 2 seconds to lay stickers ,it takes an average of 5 minutes to lay them manually
+
+PrintGrid analyzes the arrangement of designs on the selected canvas to provide estimated sticker quantity, paper utilization, and paper waste calculations.
+
+
+
+
+
+
+
+PrintGrid is a print-production planning and layout optimization application that helps printers determine 
+how designs should be arranged on a sheet, how many pieces can be produced,
+ how much material will be used, and how much may be wasted before printing.
+
+
+our planner can consider:
+
+multiple designs
+different quantities
+sheet dimensions
+custom sheet sizes
+margins
+horizontal spacing
+vertical spacing
+rotation
+grouping designs
+sheet cost
+orientation
+
+
+
+PrintGrid removes the manual calculations and repetitive preparation around printing.
+
+A printer shouldn't have to manually experiment with:
+
+A4 → 12 pieces → doesn't fit → rotate → 15 pieces → change spacing → try again → calculate sheets → calculate waste...
+
+PrintGrid should make that computational problem almost invisible.
+
+
+

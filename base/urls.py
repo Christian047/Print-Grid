@@ -1,29 +1,29 @@
 # urls.py
 from django.urls import path
+
 from . import views
 
 urlpatterns = [
-    # Main index page for creating new layouts
+    # Upload form
     path('', views.index, name='index'),
-    
-    # API endpoint to detect sticker dimensions
+
+    # Read size / DPI from an uploaded image
     path('detect-sticker-size/', views.detect_sticker_size, name='detect_sticker_size'),
-    
-    # Calculate layout and redirect to editor
+
+    # Live numbers while the customer adjusts things (JSON, nothing is saved)
+    path('quote/', views.quote, name='quote'),
+
+    # Create the job, then redirect to its result page
     path('calculate-layout/', views.calculate_layout, name='calculate_layout'),
-    
-    # Edit existing layout
-    path('edit/<int:layout_id>/', views.edit_layout, name='edit_layout'),
-    
-    # Save layout changes
-    path('save-layout/<int:layout_id>/', views.save_layout, name='save_layout'),
-    
-    # Download layout as PDF or PNG
-    path('download/<int:layout_id>/', views.download_layout, name='download_layout'),
-    
-    # Create custom paper size
-    path('create-custom-paper/', views.custom_paper_size, name='custom_paper_size'),
-    
-    # Calculate layout via AJAX (for preview)
-    path('calculate-layout-ajax/', views.calculate_layout_ajax, name='calculate_layout_ajax'),
+
+    # Result page and its sheet pictures - reached only by the job's secret token
+    path('result/<uuid:token>/', views.result, name='result'),
+    path('result/<uuid:token>/sheet/<int:sheet_no>.png', views.sheet_image, name='sheet_image'),
+
+    # Add, edit, resize or remove designs on an already-calculated job, reusing
+    # the same create-job page (recomputes and saves in place)
+    path('job/<uuid:token>/edit/', views.job_edit, name='job_edit'),
+
+    # Download PDF (all sheets) or one sheet as PNG:  ?format=pdf  |  ?format=png&sheet=2&dpi=300
+    path('download/<uuid:token>/', views.download_layout, name='download_layout'),
 ]
