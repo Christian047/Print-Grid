@@ -396,7 +396,13 @@
     const fd = new FormData(); fd.append('sticker_image', file);
     try {
       const r = await fetch(DETECT_URL, { method: 'POST', body: fd, headers: { 'X-CSRFToken': csrf } });
-      const d = await r.json();
+      let d = null; try { d = await r.json(); } catch (_) { /* the server answered with a web page, not JSON */ }
+      if (!d) {
+        const why = { 403: 'security check failed (CSRF)', 404: 'reader page not found', 413: 'server refused the file size', 500: 'server error' }[r.status] || ('server answered ' + r.status);
+        msg.className = 'small text-danger detect-msg mt-1';
+        msg.textContent = 'Could not read the image: ' + why + '. Please enter the size yourself.';
+        console.error('detect-sticker-size failed', r.status, r.url); return;
+      }
       if (!d.success) { msg.className = 'small text-danger detect-msg mt-1'; msg.textContent = d.error; return; }
       const w = row.querySelector('[name$="-width_mm"]'), h = row.querySelector('[name$="-height_mm"]');
       w.dataset.mm = String(d.mm.w); PGUnits.displayField(w, PGUnits.getUnit());
@@ -407,7 +413,7 @@
       msg.className = 'small detect-msg mt-1 ' + (d.dpi_status === 'file' ? 'text-muted' : 'text-warning');
       msg.textContent = d.message;
       scheduleQuote();
-    } catch (e) { msg.className = 'small text-danger detect-msg mt-1'; msg.textContent = 'Could not read the image. Please enter the size yourself.'; }
+    } catch (e) { console.error(e); msg.className = 'small text-danger detect-msg mt-1'; msg.textContent = 'Could not read the image (' + (e && e.message ? e.message : 'page error') + '). Please enter the size yourself.'; }
   }
 
   // ---- drag a file onto the upload box (or press Enter on it)
